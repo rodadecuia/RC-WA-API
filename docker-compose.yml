@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  rc-wa-api:
+    build: .
+    container_name: rc-wa-api
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./auth_info_rc_wa_api:/usr/src/app/auth_info_rc_wa_api
+    environment:
+      - NODE_ENV=production

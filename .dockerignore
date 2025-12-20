@@ -1,0 +1,8 @@
+node_modules
+npm-debug.log
+auth_info_rc_wa_api
+.git
+.idea
+Dockerfile
+docker-compose.yml
+README.md
