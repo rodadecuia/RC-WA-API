@@ -14,9 +14,20 @@ const storeRouter = require('./api/store');
 const { checkApiKey } = require('./api/utils');
 const { initSocket } = require('./api/socket');
 
+// Validação de Segurança na Inicialização
+const apiKey = process.env.RC_WA_API_KEY;
+if (!apiKey || apiKey.length < 20) {
+    console.error('❌ ERRO FATAL: A variável de ambiente RC_WA_API_KEY não está definida ou é muito curta (mínimo 20 caracteres).');
+    console.error('Verifique seu arquivo .env ou as variáveis do Docker.');
+    process.exit(1);
+}
+
 const app = express();
 const server = http.createServer(app);
 const port = process.env.RC_WA_API_PORT || 3000;
+
+// Confia no primeiro proxy (essencial para Rate Limiting em ambientes com proxy/Docker)
+app.set('trust proxy', 1);
 
 // Inicializa o Socket.io
 initSocket(server);
@@ -60,6 +71,9 @@ app.use(express.static(path.join(__dirname, 'frontend')));
 // Rota da documentação Swagger
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
+// Redirecionamento amigável para erro comum de digitação
+app.get('/api/docs', (req, res) => res.redirect('/api-docs'));
+
 // Middleware de autenticação global
 const apiRoutes = express.Router();
 apiRoutes.use(checkApiKey);
@@ -79,10 +93,11 @@ const httpServer = server.listen(port, () => {
     const externalUrl = process.env.RC_WA_API_URL || `http://localhost:${port}`;
     const internalUrl = process.env.RC_WA_API_INTERNAL_URL;
 
-    console.log(`API RC WA rodando na porta ${port}`);
-    console.log(`URL Externa (Dashboard/Docs): ${externalUrl}`);
+    console.log(`✅ API RC WA rodando na porta ${port}`);
+    console.log(`📊 Dashboard disponível em ${externalUrl}`);
+    console.log(`📚 Documentação disponível em ${externalUrl}/api-docs`);
     if (internalUrl) {
-        console.log(`URL Interna (API): ${internalUrl}`);
+        console.log(`🔒 URL Interna (API): ${internalUrl}`);
     }
 });
 

@@ -10,15 +10,9 @@ const formatJid = (number) => {
 // Middleware para verificar autenticação via API Key
 const checkApiKey = (req, res, next) => {
     const apiKey = process.env.RC_WA_API_KEY;
-    
-    if (!apiKey || apiKey.length < 20) {
-        return res.status(500).json({ 
-            error: 'Configuração de segurança inválida. A variável RC_WA_API_KEY deve ser definida e ter no mínimo 20 caracteres.' 
-        });
-    }
-
     const requestKey = req.headers['x-api-key'] || req.query.apiKey;
 
+    // A validação da existência e tamanho da chave do servidor agora é feita na inicialização (index.js)
     if (!requestKey || requestKey !== apiKey) {
         return res.status(401).json({ error: 'Acesso não autorizado. API Key inválida ou ausente.' });
     }
@@ -27,7 +21,6 @@ const checkApiKey = (req, res, next) => {
 };
 
 // Middleware para verificar sessão e conexão
-// Agora espera que o sessionId venha no body, query ou params
 const checkSession = (req, res, next) => {
     const sessionId = req.body.sessionId || req.query.sessionId || req.params.sessionId;
 
