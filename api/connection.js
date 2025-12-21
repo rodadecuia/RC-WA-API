@@ -1,5 +1,5 @@
 const { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
-const { makeInMemoryStore } = require('@whiskeysockets/baileys/lib/store');
+const { makeInMemoryStore } = require('./baileysStore'); // Importa o store customizado
 const pino = require('pino');
 const { sendWebhook } = require('./webhook');
 const { emitEvent } = require('./socket');

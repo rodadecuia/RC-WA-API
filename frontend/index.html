@@ -59,6 +59,7 @@
                 <!-- Lista de sessões aqui -->
             </div>
             <div class="mt-auto pt-3 border-top">
+                <a href="/api-docs.json" class="btn btn-sm btn-outline-secondary w-100 mb-2" download="swagger.json">Baixar JSON da API</a>
                 <button class="btn btn-sm btn-outline-danger w-100" onclick="logoutApi()">Sair da API</button>
             </div>
         </div>
@@ -156,7 +157,6 @@
                     document.getElementById('qrCodeContainer').innerHTML = '<p class="text-success fw-bold">Conectado!</p>';
                 }
             }
-            // Atualiza a lista lateral se necessário (ex: status indicator na lista)
         });
     }
 
@@ -220,13 +220,11 @@
         document.getElementById('sessionDetails').style.display = 'block';
         document.getElementById('currentSessionTitle').innerText = `Sessão: ${sessionId}`;
 
-        // Atualiza visual da lista
         document.querySelectorAll('.session-item').forEach(el => {
             el.classList.remove('active');
             if (el.innerText === sessionId) el.classList.add('active');
         });
 
-        // Busca status atual
         try {
             const response = await fetch(`/sessions/${sessionId}/status`, { headers: { 'x-api-key': apiKey } });
             const data = await response.json();

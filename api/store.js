@@ -36,6 +36,7 @@ router.get('/messages/:jid', checkSession, async (req, res) => {
     if (!store) return res.status(503).json({ error: 'Store não disponível para esta sessão' });
 
     try {
+        // Usa o método loadMessages que implementamos no store customizado
         const messages = await store.loadMessages(jid, limit);
         res.json({ status: 'success', count: messages.length, data: messages });
     } catch (error) {

@@ -52,6 +52,13 @@ if (servers.length > 0) swaggerDocument.servers = servers;
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'frontend')));
+
+// Rota para download do JSON
+app.get('/api-docs.json', (req, res) => {
+    res.setHeader('Content-Disposition', 'attachment; filename=swagger.json');
+    res.json(swaggerDocument);
+});
+
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.get('/api/docs', (req, res) => res.redirect('/api-docs'));
 
