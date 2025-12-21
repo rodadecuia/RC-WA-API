@@ -20,98 +20,109 @@ export const listSessions = () => Array.from(sessions.keys());
 
 export async function startSession(sessionId) {
     return new Promise((resolve, reject) => {
-        if (sessions.has(sessionId) && sessions.get(sessionId).sock?.user) {
-            console.log(`Sessão ${sessionId} já está ativa.`);
-            return resolve(sessions.get(sessionId));
-        }
-
-        const sessionToken = uuidv4();
-        const sessionPath = path.join(SESSIONS_DIR, sessionId);
-        const authPath = path.join(sessionPath, 'auth');
-        const storePath = path.join(sessionPath, 'store.json');
-
-        if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
-
-        const store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
         try {
-            if (fs.existsSync(storePath)) store.readFromFile(storePath);
-        } catch (err) {
-            console.log(`Erro ao ler store da sessão ${sessionId}:`, err.message);
-        }
+            if (sessions.has(sessionId) && sessions.get(sessionId).sock?.user) {
+                console.log(`Sessão ${sessionId} já está ativa.`);
+                return resolve(sessions.get(sessionId));
+            }
 
-        const storeInterval = setInterval(() => {
-            store.writeToFile(storePath);
-        }, 10_000);
+            const sessionToken = uuidv4();
+            const sessionPath = path.join(SESSIONS_DIR, sessionId);
+            const authPath = path.join(sessionPath, 'auth');
+            const storePath = path.join(sessionPath, 'store.json');
 
-        useMultiFileAuthState(authPath).then(({ state, saveCreds }) => {
-            fetchLatestBaileysVersion().then(({ version }) => {
-                console.log(`Iniciando sessão: ${sessionId} (Token: ${sessionToken})`);
+            if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
 
-                const sock = makeWASocket({
-                    version,
-                    auth: state,
-                    printQRInTerminal: false,
-                    logger: pino({ level: 'silent' }),
-                    browser: ["RC WA API", "Chrome", "1.0.0"],
-                    getMessage: async (key) => (store.loadMessage(key.remoteJid, key.id))?.message || undefined,
-                });
+            const store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
+            try {
+                if (fs.existsSync(storePath)) store.readFromFile(storePath);
+            } catch (err) {
+                console.log(`Erro ao ler store da sessão ${sessionId}:`, err.message);
+            }
 
-                store.bind(sock.ev);
-                sessions.set(sessionId, { sock, store, qr: null, interval: storeInterval, token: sessionToken });
+            const storeInterval = setInterval(() => {
+                store.writeToFile(storePath);
+            }, 10_000);
 
-                sock.ev.on('creds.update', saveCreds);
+            useMultiFileAuthState(authPath).then(({ state, saveCreds }) => {
+                fetchLatestBaileysVersion().then(({ version }) => {
+                    console.log(`Iniciando sessão: ${sessionId} (Token: ${sessionToken})`);
 
-                sock.ev.on('connection.update', (update) => {
-                    const { connection, lastDisconnect, qr } = update;
-                    const sessionData = sessions.get(sessionId);
+                    const sock = makeWASocket({
+                        version,
+                        auth: state,
+                        printQRInTerminal: false,
+                        logger: pino({ level: 'silent' }),
+                        browser: ["RC WA API", "Chrome", "1.0.0"],
+                        getMessage: async (key) => (store.loadMessage(key.remoteJid, key.id))?.message || undefined,
+                    });
 
-                    if (qr) {
-                        if (sessionData) sessionData.qr = qr;
-                        const eventData = { sessionId, qr, sessionToken };
-                        sendWebhook('connection.qr', eventData);
-                        emitEvent('connection.qr', eventData);
-                    }
+                    store.bind(sock.ev);
+                    sessions.set(sessionId, { sock, store, qr: null, interval: storeInterval, token: sessionToken });
 
-                    if (connection === 'close') {
-                        const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-                        console.log(`Sessão ${sessionId} fechada. Reconectar: ${shouldReconnect}`);
-                        
-                        const eventData = { sessionId, reason: lastDisconnect.error?.message, shouldReconnect, sessionToken };
-                        sendWebhook('connection.close', eventData);
-                        emitEvent('status.update', { sessionId, status: 'disconnected' });
+                    sock.ev.on('creds.update', saveCreds);
 
-                        if (shouldReconnect) {
-                            startSession(sessionId);
-                        } else {
-                            deleteSession(sessionId);
+                    sock.ev.on('connection.update', (update) => {
+                        const { connection, lastDisconnect, qr } = update;
+                        const sessionData = sessions.get(sessionId);
+
+                        if (qr) {
+                            if (sessionData) sessionData.qr = qr;
+                            const eventData = { sessionId, qr, sessionToken };
+                            sendWebhook('connection.qr', eventData);
+                            emitEvent('connection.qr', eventData);
                         }
-                    } else if (connection === 'open') {
-                        console.log(`Sessão ${sessionId} conectada!`);
-                        if (sessionData) sessionData.qr = null;
-                        
-                        const userJid = sock.user?.id ? sock.user.id.split(':')[0] + '@s.whatsapp.net' : undefined;
-                        const userName = sock.user?.name || sock.user?.notify || undefined;
 
-                        const connectionData = { sessionId, sessionToken, user: { jid: userJid, name: userName } };
-                        
-                        sendWebhook('connection.open', connectionData);
-                        emitEvent('status.update', { sessionId, status: 'open', user: connectionData.user });
-                        resolve(sessions.get(sessionId));
-                    }
-                });
+                        if (connection === 'close') {
+                            const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+                            console.log(`Sessão ${sessionId} fechada. Reconectar: ${shouldReconnect}`);
+                            
+                            const eventData = { sessionId, reason: lastDisconnect.error?.message, shouldReconnect, sessionToken };
+                            sendWebhook('connection.close', eventData);
+                            emitEvent('status.update', { sessionId, status: 'disconnected' });
 
-                sock.ev.on('messages.upsert', async m => {
-                    if (m.type === 'notify') {
-                        for (const msg of m.messages) {
-                            if (!msg.key.fromMe) {
-                                const webhookPayload = { ...msg, sessionId, sessionToken };
-                                sendWebhook('message.received', webhookPayload);
+                            if (shouldReconnect) {
+                                startSession(sessionId);
+                            } else {
+                                deleteSession(sessionId);
+                            }
+                        } else if (connection === 'open') {
+                            console.log(`Sessão ${sessionId} conectada!`);
+                            if (sessionData) sessionData.qr = null;
+                            
+                            const userJid = sock.user?.id ? sock.user.id.split(':')[0] + '@s.whatsapp.net' : undefined;
+                            const userName = sock.user?.name || sock.user?.notify || undefined;
+
+                            const connectionData = { sessionId, sessionToken, user: { jid: userJid, name: userName } };
+                            
+                            sendWebhook('connection.open', connectionData);
+                            emitEvent('status.update', { sessionId, status: 'open', user: connectionData.user });
+                            resolve(sessions.get(sessionId));
+                        }
+                    });
+
+                    sock.ev.on('messages.upsert', async m => {
+                        if (m.type === 'notify') {
+                            for (const msg of m.messages) {
+                                if (!msg.key.fromMe) {
+                                    const webhookPayload = { ...msg, sessionId, sessionToken };
+                                    sendWebhook('message.received', webhookPayload);
+                                }
                             }
                         }
-                    }
+                    });
+                }).catch(err => {
+                    console.error(`Erro ao obter versão do Baileys: ${err}`);
+                    reject(err);
                 });
-            }).catch(reject);
-        }).catch(reject);
+            }).catch(err => {
+                console.error(`Erro ao carregar auth state: ${err}`);
+                reject(err);
+            });
+        } catch (error) {
+            console.error(`Erro fatal ao iniciar sessão ${sessionId}:`, error);
+            reject(error);
+        }
     });
 }
 
@@ -135,7 +146,7 @@ export const initSavedSessions = async () => {
         const files = fs.readdirSync(SESSIONS_DIR);
         const promises = files.map(file => {
             if (fs.existsSync(path.join(SESSIONS_DIR, file, 'auth'))) {
-                return startSession(file);
+                return startSession(file).catch(err => console.error(`Falha ao restaurar sessão ${file}:`, err));
             }
         }).filter(p => p);
         await Promise.all(promises);
@@ -148,22 +159,32 @@ router.post('/sessions/start', async (req, res) => {
     const { sessionId } = req.body;
     if (!sessionId) return res.status(400).json({ error: 'sessionId é obrigatório' });
     
-    await startSession(sessionId);
-    const session = sessions.get(sessionId);
-    res.json({ 
-        status: 'success', 
-        message: `Sessão ${sessionId} iniciada`,
-        sessionToken: session?.token
-    });
+    try {
+        await startSession(sessionId);
+        const session = sessions.get(sessionId);
+        res.json({ 
+            status: 'success', 
+            message: `Sessão ${sessionId} iniciada`,
+            sessionToken: session?.token
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: `Falha ao iniciar sessão: ${error.message}` });
+    }
 });
 
 router.post('/sessions/stop', async (req, res) => {
     const { sessionId } = req.body;
     if (!sessionId) return res.status(400).json({ error: 'sessionId é obrigatório' });
     
-    const result = await deleteSession(sessionId);
-    if (result) res.json({ status: 'success', message: `Sessão ${sessionId} parada` });
-    else res.status(404).json({ error: 'Sessão não encontrada' });
+    try {
+        const result = await deleteSession(sessionId);
+        if (result) res.json({ status: 'success', message: `Sessão ${sessionId} parada` });
+        else res.status(404).json({ error: 'Sessão não encontrada' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: `Falha ao parar sessão: ${error.message}` });
+    }
 });
 
 router.get('/sessions', (req, res) => {
