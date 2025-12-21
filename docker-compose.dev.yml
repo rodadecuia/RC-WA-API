@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  rc-wa-api-dev:
+    build: .
+    container_name: rc-wa-api-dev
+    restart: unless-stopped
+    ports:
+      - "${RC_WA_API_PORT:-3000}:3000"
+    volumes:
+      # Mapeia o código-fonte para dentro do container para desenvolvimento
+      - .:/usr/src/app
+      # Garante que node_modules não seja sobrescrito pelo mapeamento acima
+      - /usr/src/app/node_modules
+      # Persiste as sessões
+      - ./sessions_data:/usr/src/app/sessions_data
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development

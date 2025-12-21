@@ -2,13 +2,15 @@ version: '3.8'
 
 services:
   rc-wa-api:
-    build: .
+    image: ghcr.io/rodadecuia/rc-wa-api:latest
     container_name: rc-wa-api
     restart: always
     ports:
-      - "3000:3000"
+      - "${RC_WA_API_PORT:-3000}:3000"
     volumes:
       - ./sessions_data:/usr/src/app/sessions_data
       - ./.env:/usr/src/app/.env
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
