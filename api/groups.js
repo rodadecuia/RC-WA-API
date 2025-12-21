@@ -1,7 +1,8 @@
-const router = require('express').Router();
-const { formatJid, checkSession } = require('./utils');
+import express from 'express';
+import { formatJid, checkSession } from './utils.js';
 
-// Cria um novo grupo
+const router = express.Router();
+
 router.post('/group-create', checkSession, async (req, res) => {
     const { subject, participants } = req.body;
     const sock = req.sessionData.sock;
@@ -20,7 +21,6 @@ router.post('/group-create', checkSession, async (req, res) => {
     }
 });
 
-// Atualiza participantes (Adicionar, Remover, Promover, Rebaixar)
 router.post('/group-update-participants', checkSession, async (req, res) => {
     const { groupId, action, participants } = req.body;
     const sock = req.sessionData.sock;
@@ -39,14 +39,11 @@ router.post('/group-update-participants', checkSession, async (req, res) => {
     }
 });
 
-// Lista TODOS os grupos que a sessão participa
 router.get('/groups', checkSession, async (req, res) => {
     const sock = req.sessionData.sock;
 
     try {
-        // groupFetchAllParticipating busca os metadados de TODOS os grupos
         const groups = await sock.groupFetchAllParticipating();
-        // O retorno é um objeto { "id": data }, transformamos em array
         const groupsList = Object.values(groups);
         
         res.json({ 
@@ -60,16 +57,13 @@ router.get('/groups', checkSession, async (req, res) => {
     }
 });
 
-// Obtém dados completos de um grupo específico (incluindo foto)
 router.get('/group-info/:groupId', checkSession, async (req, res) => {
     const { groupId } = req.params;
     const sock = req.sessionData.sock;
 
     try {
-        // Busca metadados
         const metadata = await sock.groupMetadata(groupId);
         
-        // Tenta buscar a foto (pode falhar se não tiver)
         let ppUrl = null;
         try {
             ppUrl = await sock.profilePictureUrl(groupId, 'image');
@@ -90,7 +84,6 @@ router.get('/group-info/:groupId', checkSession, async (req, res) => {
     }
 });
 
-// Obtém link de convite
 router.get('/group-invite-code/:groupId', checkSession, async (req, res) => {
     const { groupId } = req.params;
     const sock = req.sessionData.sock;
@@ -104,12 +97,9 @@ router.get('/group-invite-code/:groupId', checkSession, async (req, res) => {
     }
 });
 
-// Atualiza configurações do grupo (Nome, Descrição, Restrições)
 router.post('/group-settings', checkSession, async (req, res) => {
     const { groupId, action, value } = req.body;
     const sock = req.sessionData.sock;
-    
-    // actions: 'subject' (nome), 'description', 'announcement' (fechar grupo), 'locked' (apenas admin edita dados)
     
     try {
         if (action === 'subject') {
@@ -117,10 +107,8 @@ router.post('/group-settings', checkSession, async (req, res) => {
         } else if (action === 'description') {
             await sock.groupUpdateDescription(groupId, value);
         } else if (action === 'announcement') {
-            // value: true (fechado), false (aberto)
             await sock.groupSettingUpdate(groupId, 'announcement', value ? 'announcement' : 'not_announcement');
         } else if (action === 'locked') {
-            // value: true (restrito), false (livre)
             await sock.groupSettingUpdate(groupId, 'locked', value ? 'locked' : 'unlocked');
         } else {
             return res.status(400).json({ error: 'Ação inválida' });
@@ -133,4 +121,4 @@ router.post('/group-settings', checkSession, async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

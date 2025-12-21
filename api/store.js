@@ -1,5 +1,7 @@
-const router = require('express').Router();
-const { checkSession } = require('./utils');
+import express from 'express';
+import { checkSession } from './utils.js';
+
+const router = express.Router();
 
 router.get('/chats', checkSession, (req, res) => {
     try {
@@ -36,7 +38,6 @@ router.get('/messages/:jid', checkSession, async (req, res) => {
     if (!store) return res.status(503).json({ error: 'Store não disponível para esta sessão' });
 
     try {
-        // Usa o método loadMessages que implementamos no store customizado
         const messages = await store.loadMessages(jid, limit);
         res.json({ status: 'success', count: messages.length, data: messages });
     } catch (error) {
@@ -45,4 +46,4 @@ router.get('/messages/:jid', checkSession, async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

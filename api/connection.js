@@ -1,11 +1,12 @@
-const { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
-const { makeInMemoryStore } = require('./baileysStore'); // Importa o store customizado
-const pino = require('pino');
-const { sendWebhook } = require('./webhook');
-const { emitEvent } = require('./socket');
-const fs = require('fs');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+import { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState } from '@whiskeysockets/baileys';
+import pino from 'pino';
+import { sendWebhook } from './webhook.js';
+import { emitEvent } from './socket.js';
+import fs from 'fs';
+import path from 'path';
+import { v4: uuidv4 } from 'uuid';
+import { makeInMemoryStore } from './baileysStore.js';
+import express from 'express';
 
 const sessions = new Map();
 const SESSIONS_DIR = './sessions_data';
@@ -14,10 +15,10 @@ if (!fs.existsSync(SESSIONS_DIR)) {
     fs.mkdirSync(SESSIONS_DIR);
 }
 
-const getSession = (sessionId) => sessions.get(sessionId);
-const listSessions = () => Array.from(sessions.keys());
+export const getSession = (sessionId) => sessions.get(sessionId);
+export const listSessions = () => Array.from(sessions.keys());
 
-async function startSession(sessionId) {
+export async function startSession(sessionId) {
     return new Promise((resolve, reject) => {
         if (sessions.has(sessionId) && sessions.get(sessionId).sock?.user) {
             console.log(`Sessão ${sessionId} já está ativa.`);
@@ -114,7 +115,7 @@ async function startSession(sessionId) {
     });
 }
 
-async function deleteSession(sessionId) {
+export async function deleteSession(sessionId) {
     const session = sessions.get(sessionId);
     if (session) {
         if (session.sock) {
@@ -129,7 +130,7 @@ async function deleteSession(sessionId) {
     return false;
 }
 
-const initSavedSessions = async () => {
+export const initSavedSessions = async () => {
     if (fs.existsSync(SESSIONS_DIR)) {
         const files = fs.readdirSync(SESSIONS_DIR);
         const promises = files.map(file => {
@@ -141,7 +142,7 @@ const initSavedSessions = async () => {
     }
 };
 
-const router = require('express').Router();
+export const router = express.Router();
 
 router.post('/sessions/start', async (req, res) => {
     const { sessionId } = req.body;
@@ -189,12 +190,3 @@ router.get('/sessions/:sessionId/status', (req, res) => {
         user: userData
     });
 });
-
-module.exports = { 
-    router, 
-    startSession, 
-    getSession, 
-    deleteSession,
-    initSavedSessions,
-    listSessions
-};

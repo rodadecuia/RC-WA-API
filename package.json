@@ -1,6 +1,7 @@
 {
   "name": "rc-wa-api",
   "version": "1.0.0",
+  "type": "module",
   "description": "API RC WA API para integração de sistemas",
   "main": "index.js",
   "scripts": {
@@ -13,6 +14,8 @@
     "dotenv": "latest",
     "express": "latest",
     "express-rate-limit": "latest",
+    "jimp": "latest",
+    "link-preview-js": "latest",
     "pino": "latest",
     "qrcode-terminal": "latest",
     "socket.io": "latest",

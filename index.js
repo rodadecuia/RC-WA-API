@@ -1,22 +1,27 @@
-require('dotenv').config();
-const express = require('express');
-const http = require('http');
-const swaggerUi = require('swagger-ui-express');
-const YAML = require('yamljs');
-const path = require('path');
-const fs = require('fs');
-const rateLimit = require('express-rate-limit');
-const { router: connectionRouter, initSavedSessions } = require('./api/connection');
-const messagesRouter = require('./api/messages');
-const mediaRouter = require('./api/media');
-const groupsRouter = require('./api/groups');
-const othersRouter = require('./api/others');
-const storeRouter = require('./api/store');
-const { checkApiKey } = require('./api/utils');
-const { initSocket } = require('./api/socket');
+import 'dotenv/config';
+import express from 'express';
+import http from 'http';
+import swaggerUi from 'swagger-ui-express';
+import YAML from 'yamljs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+import rateLimit from 'express-rate-limit';
+
+import { router as connectionRouter, initSavedSessions } from './api/connection.js';
+import messagesRouter from './api/messages.js';
+import mediaRouter from './api/media.js';
+import groupsRouter from './api/groups.js';
+import othersRouter from './api/others.js';
+import storeRouter from './api/store.js';
+import { checkApiKey } from './api/utils.js';
+import { initSocket } from './api/socket.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Garante que a pasta de sessões existe
-const SESSIONS_DIR = './sessions_data';
+const SESSIONS_DIR = path.join(__dirname, 'sessions_data');
 if (!fs.existsSync(SESSIONS_DIR)) {
     fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 }
@@ -53,7 +58,6 @@ if (servers.length > 0) swaggerDocument.servers = servers;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'frontend')));
 
-// Rota para download do JSON
 app.get('/api-docs.json', (req, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename=swagger.json');
     res.json(swaggerDocument);

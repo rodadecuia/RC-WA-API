@@ -1,18 +1,17 @@
-const { getSession } = require('./connection');
+import { getSession } from './connection.js';
 
 // Função auxiliar para formatar números
-const formatJid = (number) => {
+export const formatJid = (number) => {
     if (!number) return null;
     if (number.includes('@')) return number;
     return `${number}@s.whatsapp.net`;
 };
 
 // Middleware para verificar autenticação via API Key
-const checkApiKey = (req, res, next) => {
+export const checkApiKey = (req, res, next) => {
     const apiKey = process.env.RC_WA_API_KEY;
     const requestKey = req.headers['x-api-key'] || req.query.apiKey;
 
-    // A validação da existência e tamanho da chave do servidor agora é feita na inicialização (index.js)
     if (!requestKey || requestKey !== apiKey) {
         return res.status(401).json({ error: 'Acesso não autorizado. API Key inválida ou ausente.' });
     }
@@ -21,7 +20,7 @@ const checkApiKey = (req, res, next) => {
 };
 
 // Middleware para verificar sessão e conexão
-const checkSession = (req, res, next) => {
+export const checkSession = (req, res, next) => {
     const sessionId = req.body.sessionId || req.query.sessionId || req.params.sessionId;
 
     if (!sessionId) {
@@ -42,5 +41,3 @@ const checkSession = (req, res, next) => {
     req.sessionData = session;
     next();
 };
-
-module.exports = { formatJid, checkSession, checkApiKey };

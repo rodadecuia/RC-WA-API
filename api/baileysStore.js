@@ -1,6 +1,6 @@
-const fs = require('fs');
+import fs from 'fs';
 
-function makeInMemoryStore({ logger }) {
+export function makeInMemoryStore({ logger }) {
     const chats = new Map();
     const messages = new Map(); // jid -> Map<id, msg>
     const contacts = {};
@@ -15,7 +15,6 @@ function makeInMemoryStore({ logger }) {
     const loadMessages = async (jid, count) => {
         if (!messages.has(jid)) return [];
         const msgs = Array.from(messages.get(jid).values());
-        // Ordena por timestamp se possível, mas aqui assume ordem de chegada
         return msgs.slice(-count); 
     }
 
@@ -39,7 +38,6 @@ function makeInMemoryStore({ logger }) {
                     if (!messages.has(jid)) messages.set(jid, new Map());
                     messages.get(jid).set(msg.key.id, msg);
                     
-                    // Limita histórico em memória (opcional, para não estourar RAM)
                     const chatMsgs = messages.get(jid);
                     if (chatMsgs.size > 50) {
                         const firstKey = chatMsgs.keys().next().value;
@@ -51,7 +49,6 @@ function makeInMemoryStore({ logger }) {
     }
 
     const writeToFile = (path) => {
-        // Salva apenas chats e contatos para persistência leve
         const data = {
             chats: Object.fromEntries(chats),
             contacts: contacts
@@ -81,5 +78,3 @@ function makeInMemoryStore({ logger }) {
         contacts 
     };
 }
-
-module.exports = { makeInMemoryStore };

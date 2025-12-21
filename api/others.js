@@ -1,8 +1,9 @@
-const router = require('express').Router();
-const { formatJid, checkSession } = require('./utils');
-const { sendWebhook } = require('./webhook');
+import express from 'express';
+import { formatJid, checkSession } from './utils.js';
+import { sendWebhook } from './webhook.js';
 
-// Obtém a foto de perfil de QUALQUER número
+const router = express.Router();
+
 router.get('/profile-pic/:number', checkSession, async (req, res) => {
     const { number } = req.params;
     const jid = formatJid(number);
@@ -16,7 +17,6 @@ router.get('/profile-pic/:number', checkSession, async (req, res) => {
     }
 });
 
-// Verifica se o número existe no WhatsApp
 router.post('/check-number', checkSession, async (req, res) => {
     const { number } = req.body;
     const sock = req.sessionData.sock;
@@ -38,7 +38,6 @@ router.post('/check-number', checkSession, async (req, res) => {
     }
 });
 
-// Bloqueia/Desbloqueia usuário
 router.post('/block-user', checkSession, async (req, res) => {
     const { number, block } = req.body;
     const jid = formatJid(number);
@@ -53,7 +52,6 @@ router.post('/block-user', checkSession, async (req, res) => {
     }
 });
 
-// Atualiza o Recado (Status/About) do Bot
 router.post('/update-profile-status', checkSession, async (req, res) => {
     const { status } = req.body;
     const sock = req.sessionData.sock;
@@ -69,7 +67,6 @@ router.post('/update-profile-status', checkSession, async (req, res) => {
     }
 });
 
-// Atualiza o Nome de Exibição (PushName) do Bot
 router.post('/update-profile-name', checkSession, async (req, res) => {
     const { name } = req.body;
     const sock = req.sessionData.sock;
@@ -85,7 +82,6 @@ router.post('/update-profile-name', checkSession, async (req, res) => {
     }
 });
 
-// Teste de Webhook
 router.post('/webhook-test', async (req, res) => {
     const webhookUrl = process.env.RC_WA_WEBHOOK_URL;
     if (!webhookUrl) {
@@ -100,4 +96,4 @@ router.post('/webhook-test', async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

@@ -1,5 +1,7 @@
-const router = require('express').Router();
-const { formatJid, checkSession } = require('./utils');
+import express from 'express';
+import { formatJid, checkSession } from './utils.js';
+
+const router = express.Router();
 
 router.post('/send-text', checkSession, async (req, res) => {
     const { number, message } = req.body;
@@ -117,4 +119,4 @@ router.post('/mark-read', checkSession, async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;
