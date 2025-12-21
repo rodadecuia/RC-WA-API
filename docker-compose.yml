@@ -9,7 +9,6 @@ services:
       - "${RC_WA_API_PORT:-3000}:3000"
     volumes:
       - ./sessions_data:/usr/src/app/sessions_data
-      - ./.env:/usr/src/app/.env
     env_file:
       - .env
     environment:

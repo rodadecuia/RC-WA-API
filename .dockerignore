@@ -1,8 +1,12 @@
 node_modules
 npm-debug.log
 auth_info_rc_wa_api
+sessions_data
 .git
 .idea
+.env
 Dockerfile
 docker-compose.yml
+docker-compose.dev.yml
+docker-compose.prod.yml
 README.md

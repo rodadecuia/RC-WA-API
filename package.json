@@ -4,10 +4,11 @@
   "description": "API RC WA API para integração de sistemas",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "latest",
+    "@whiskeysockets/baileys": "7.0.0-rc.9",
     "axios": "latest",
     "dotenv": "latest",
     "express": "latest",
@@ -18,5 +19,8 @@
     "swagger-ui-express": "latest",
     "uuid": "latest",
     "yamljs": "latest"
+  },
+  "devDependencies": {
+    "nodemon": "latest"
   }
 }

@@ -1,0 +1,11 @@
+{
+  "watch": ["."],
+  "ignore": [
+    "node_modules",
+    "sessions_data",
+    "baileys_store.json",
+    "frontend"
+  ],
+  "ext": "js,json,yaml",
+  "exec": "node index.js"
+}
