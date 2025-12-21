@@ -16,7 +16,7 @@ const { initSocket } = require('./api/socket');
 
 const app = express();
 const server = http.createServer(app);
-const port = process.env.PORT || 3000;
+const port = process.env.RC_WA_API_PORT || 3000;
 
 // Inicializa o Socket.io
 initSocket(server);
