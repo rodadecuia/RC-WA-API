@@ -3,6 +3,9 @@ FROM node:24-alpine
 # Cria o diretório de trabalho
 WORKDIR /usr/src/app
 
+# Instala git e dependências de build (python3, make, g++) necessárias para algumas libs
+RUN apk add --no-cache git python3 make g++
+
 # Copia os arquivos de dependências
 COPY package*.json ./
 
