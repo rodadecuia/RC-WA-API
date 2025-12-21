@@ -1,0 +1,382 @@
+openapi: 3.1.0
+info:
+  title: RC WA API
+  description: API Multi-Sessão para integração com WhatsApp utilizando a biblioteca Baileys.
+  version: 2.3.0
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: Sessões
+    description: Gerenciamento de múltiplas sessões (Start, Stop, Status)
+  - name: Mensagens
+    description: Envio de mensagens (Requer sessionId)
+  - name: Mídia
+    description: Envio de mídia (Requer sessionId)
+  - name: Grupos
+    description: Gerenciamento de grupos (Requer sessionId)
+  - name: Store (Dados)
+    description: Acesso aos dados persistidos (Requer sessionId)
+  - name: Webhooks
+    description: Gerenciamento e testes de Webhooks
+  - name: Outros
+    description: Outras funcionalidades
+
+paths:
+  /sessions/start:
+    post:
+      tags: [Sessões]
+      summary: Inicia uma nova sessão
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                  example: "vendas_01"
+      responses:
+        '200':
+          description: Sessão iniciada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  sessionToken:
+                    type: string
+                    description: Token único gerado para esta instância da sessão
+
+  /sessions/stop:
+    post:
+      tags: [Sessões]
+      summary: Para e remove uma sessão
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                  example: "vendas_01"
+      responses:
+        '200':
+          description: Sessão parada
+
+  /sessions:
+    get:
+      tags: [Sessões]
+      summary: Lista todas as sessões ativas
+      responses:
+        '200':
+          description: Lista de IDs de sessão
+
+  /sessions/{sessionId}/status:
+    get:
+      tags: [Sessões]
+      summary: Verifica o status de uma sessão específica
+      parameters:
+        - in: path
+          name: sessionId
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Status, QR Code e dados do usuário
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  qr:
+                    type: string
+                  sessionToken:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      jid:
+                        type: string
+                      name:
+                        type: string
+
+  /send-text:
+    post:
+      tags: [Mensagens]
+      summary: Envia uma mensagem de texto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                  example: "vendas_01"
+                number:
+                  type: string
+                  example: "5511999999999"
+                message:
+                  type: string
+                  example: "Olá, mundo!"
+      responses:
+        '200':
+          description: Mensagem enviada com sucesso
+
+  /send-image:
+    post:
+      tags: [Mídia]
+      summary: Envia uma imagem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                  example: "vendas_01"
+                number:
+                  type: string
+                  example: "5511999999999"
+                url:
+                  type: string
+                  example: "https://exemplo.com/imagem.jpg"
+                caption:
+                  type: string
+                  example: "Minha imagem"
+      responses:
+        '200':
+          description: Imagem enviada com sucesso
+
+  /groups:
+    get:
+      tags: [Grupos]
+      summary: Lista TODOS os grupos que a sessão participa
+      parameters:
+        - in: query
+          name: sessionId
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Lista de grupos com metadados
+
+  /group-info/{groupId}:
+    get:
+      tags: [Grupos]
+      summary: Obtém dados completos de um grupo (incluindo foto)
+      parameters:
+        - in: path
+          name: groupId
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: sessionId
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Metadados e URL da foto
+
+  /group-create:
+    post:
+      tags: [Grupos]
+      summary: Cria um grupo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                subject:
+                  type: string
+                participants:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Grupo criado
+
+  /group-settings:
+    post:
+      tags: [Grupos]
+      summary: Altera configurações do grupo (Nome, Descrição, Fechar Grupo)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                groupId:
+                  type: string
+                action:
+                  type: string
+                  enum: [subject, description, announcement, locked]
+                value:
+                  oneOf:
+                    - type: string
+                    - type: boolean
+      responses:
+        '200':
+          description: Configuração atualizada
+
+  /check-number:
+    post:
+      tags: [Outros]
+      summary: Verifica se um número existe no WhatsApp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                  example: "vendas_01"
+                number:
+                  type: string
+                  example: "5511999999999"
+      responses:
+        '200':
+          description: Resultado da verificação
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exists:
+                    type: boolean
+                  jid:
+                    type: string
+
+  /update-profile-status:
+    post:
+      tags: [Outros]
+      summary: Atualiza o Recado (About) do Bot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                  example: "vendas_01"
+                status:
+                  type: string
+                  example: "Atendimento das 08h às 18h"
+      responses:
+        '200':
+          description: Status atualizado
+
+  /update-profile-name:
+    post:
+      tags: [Outros]
+      summary: Atualiza o Nome de Exibição (PushName)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                  example: "vendas_01"
+                name:
+                  type: string
+                  example: "Atendente Virtual"
+      responses:
+        '200':
+          description: Nome atualizado
+
+  /chats:
+    get:
+      tags: [Store (Dados)]
+      summary: Lista chats de uma sessão
+      parameters:
+        - in: query
+          name: sessionId
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Lista de chats
+
+  /webhook-test:
+    post:
+      tags: [Webhooks]
+      summary: Testa o envio de Webhook
+      responses:
+        '200':
+          description: Webhook de teste enviado com sucesso
+
+webhooks:
+  rc-wa-event:
+    post:
+      summary: Evento enviado pela API
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event:
+                  type: string
+                sessionId:
+                  type: string
+                sessionToken:
+                  type: string
+                  description: UUID único da sessão
+                timestamp:
+                  type: string
+                data:
+                  type: object
+            examples:
+              Conectado:
+                summary: Evento de Conexão Aberta com Dados do Usuário
+                value:
+                  event: connection.open
+                  sessionId: "vendas_01"
+                  sessionToken: "a1b2c3d4-..."
+                  timestamp: "2023-10-27T10:05:00Z"
+                  data: 
+                    user:
+                      jid: "5511999999999@s.whatsapp.net"
+                      name: "Loja Oficial"
