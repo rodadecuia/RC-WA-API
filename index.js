@@ -36,8 +36,20 @@ app.use(limiter);
 // Carrega o arquivo Swagger
 const swaggerDocument = YAML.load('./swagger.yaml');
 
+// Configura os servidores do Swagger dinamicamente
+const servers = [];
+
 if (process.env.RC_WA_API_URL) {
-    swaggerDocument.servers = [{ url: process.env.RC_WA_API_URL }];
+    servers.push({ url: process.env.RC_WA_API_URL, description: 'Servidor Externo (Público)' });
+}
+
+if (process.env.RC_WA_API_INTERNAL_URL) {
+    servers.push({ url: process.env.RC_WA_API_INTERNAL_URL, description: 'Servidor Interno (Docker/Local)' });
+}
+
+// Se houver servidores configurados, adiciona ao documento
+if (servers.length > 0) {
+    swaggerDocument.servers = servers;
 }
 
 app.use(express.json());
@@ -73,20 +85,11 @@ const httpServer = server.listen(port, () => {
 const gracefulShutdown = async () => {
     console.log('Recebido sinal de desligamento. Fechando sessões...');
     
-    // Obtém lista de sessões via função exportada (precisa exportar listSessions no connection.js)
-    // Como listSessions retorna array de IDs, vamos iterar
-    // Nota: listSessions foi importado lá em cima, mas precisamos garantir que ele retorne os IDs
-    
-    // Como listSessions retorna apenas as chaves, vamos usar deleteSession para fechar
-    // Mas deleteSession remove do mapa. O ideal seria apenas fechar o socket.
-    // Para simplificar, vamos forçar o encerramento do processo após um tempo
-    
     httpServer.close(() => {
         console.log('Servidor HTTP fechado.');
         process.exit(0);
     });
 
-    // Força o encerramento se demorar muito
     setTimeout(() => {
         console.error('Forçando encerramento...');
         process.exit(1);
