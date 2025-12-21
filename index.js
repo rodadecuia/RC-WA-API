@@ -27,8 +27,14 @@ if (!fs.existsSync(SESSIONS_DIR)) {
 }
 
 const apiKey = process.env.RC_WA_API_KEY;
+
+// DEBUG: Verificar o que está chegando
+console.log(`[DEBUG] RC_WA_API_KEY: '${apiKey ? apiKey.substring(0, 3) + '***' + apiKey.substring(apiKey.length - 3) : 'UNDEFINED'}'`);
+console.log(`[DEBUG] Tamanho: ${apiKey ? apiKey.length : 0}`);
+
 if (!apiKey || apiKey.length < 20) {
     console.error('❌ ERRO FATAL: A variável de ambiente RC_WA_API_KEY não está definida ou é muito curta (mínimo 20 caracteres).');
+    console.error('Verifique seu arquivo .env ou as variáveis do Docker.');
     process.exit(1);
 }
 

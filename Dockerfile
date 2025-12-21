@@ -15,11 +15,6 @@ RUN npm cache clean --force && npm install
 # Copia o restante dos arquivos do projeto
 COPY . .
 
-# Cria um usuário não-root e dá permissão
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-RUN chown -R appuser:appgroup /usr/src/app
-USER appuser
-
 # Expõe a porta que a aplicação usa
 EXPOSE 3000
 
