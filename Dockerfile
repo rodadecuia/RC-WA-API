@@ -1,4 +1,4 @@
-FROM node:24-alpine
+FROM node:lts-alpine
 
 # Cria o diretório de trabalho
 WORKDIR /usr/src/app
