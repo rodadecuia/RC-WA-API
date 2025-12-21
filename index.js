@@ -76,9 +76,14 @@ app.use('/', apiRoutes);
 initSavedSessions();
 
 const httpServer = server.listen(port, () => {
+    const externalUrl = process.env.RC_WA_API_URL || `http://localhost:${port}`;
+    const internalUrl = process.env.RC_WA_API_INTERNAL_URL;
+
     console.log(`API RC WA rodando na porta ${port}`);
-    console.log(`Dashboard disponível em http://localhost:${port}`);
-    console.log(`Documentação disponível em http://localhost:${port}/api-docs`);
+    console.log(`URL Externa (Dashboard/Docs): ${externalUrl}`);
+    if (internalUrl) {
+        console.log(`URL Interna (API): ${internalUrl}`);
+    }
 });
 
 // Graceful Shutdown
