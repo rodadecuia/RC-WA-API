@@ -1,4 +1,4 @@
-import { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState, makeInMemoryStore } from '@whiskeysockets/baileys';
+import { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { sendWebhook } from './webhook.js';
 import { emitEvent } from './socket.js';
@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import express from 'express';
+import { makeInMemoryStore } from './store.js'; // Importando do nosso arquivo local
 
 const sessions = new Map();
 const SESSIONS_DIR = './sessions_data';
@@ -40,18 +41,16 @@ export async function startSession(sessionId) {
 
             if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
 
-            // Tenta inicializar o store apenas se a função existir
-            let store;
+            const store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
             try {
-                store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
                 if (fs.existsSync(storePath)) store.readFromFile(storePath);
-                
-                const storeInterval = setInterval(() => {
-                    store.writeToFile(storePath);
-                }, 10_000);
-            } catch (e) {
-                console.warn('makeInMemoryStore não disponível ou falhou ao iniciar. O armazenamento de mensagens em memória será desativado.', e.message);
+            } catch (err) {
+                console.log(`Erro ao ler store da sessão ${sessionId}:`, err.message);
             }
+
+            const storeInterval = setInterval(() => {
+                store.writeToFile(storePath);
+            }, 10_000);
 
             useMultiFileAuthState(authPath).then(({ state, saveCreds }) => {
                 fetchLatestBaileysVersion().then(({ version }) => {
@@ -63,15 +62,10 @@ export async function startSession(sessionId) {
                         printQRInTerminal: false,
                         logger: pino({ level: 'silent' }),
                         browser: ["RC WA API", "Chrome", "1.0.0"],
-                        getMessage: async (key) => {
-                            if (store) {
-                                return (await store.loadMessage(key.remoteJid, key.id))?.message || undefined;
-                            }
-                            return undefined;
-                        },
+                        getMessage: async (key) => (store.loadMessage(key.remoteJid, key.id))?.message || undefined,
                     });
 
-                    if (store) store.bind(sock.ev);
+                    store.bind(sock.ev);
                     
                     const stats = {
                         startTime: Date.now(),
@@ -81,14 +75,7 @@ export async function startSession(sessionId) {
                         blockedCount: 0
                     };
 
-                    sessions.set(sessionId, { 
-                        sock, 
-                        store, 
-                        qr: null, 
-                        interval: store?.interval, // Ajuste aqui caso o intervalo esteja atrelado ao store
-                        token: sessionToken, 
-                        stats 
-                    });
+                    sessions.set(sessionId, { sock, store, qr: null, interval: storeInterval, token: sessionToken, stats });
 
                     sock.ev.on('creds.update', saveCreds);
 
@@ -127,7 +114,6 @@ export async function startSession(sessionId) {
                             emitEvent('status.update', { sessionId, status: 'disconnected' });
 
                             if (shouldReconnect) {
-                                // Verifica se a sessão ainda existe no mapa (não foi desconectada manualmente)
                                 if (sessions.has(sessionId)) {
                                     startSession(sessionId);
                                 }
@@ -178,11 +164,9 @@ export async function startSession(sessionId) {
     });
 }
 
-// Apenas desconecta (mantém arquivos)
 export async function disconnectSession(sessionId) {
     const session = sessions.get(sessionId);
     if (session) {
-        // Remove listeners para evitar reconexão automática indesejada
         session.sock.ev.removeAllListeners('connection.update');
         session.sock.end(undefined);
         if (session.interval) clearInterval(session.interval);
@@ -194,7 +178,6 @@ export async function disconnectSession(sessionId) {
     return false;
 }
 
-// Desconecta e apaga arquivos (Logout)
 export async function deleteSession(sessionId) {
     const session = sessions.get(sessionId);
     const sessionPath = path.join(SESSIONS_DIR, sessionId);
@@ -208,13 +191,12 @@ export async function deleteSession(sessionId) {
         sessions.delete(sessionId);
     }
 
-    // Garante a remoção da pasta
     if (fs.existsSync(sessionPath)) {
         fs.rmSync(sessionPath, { recursive: true, force: true });
     }
 
     console.log(`Sessão ${sessionId} excluída.`);
-    emitEvent('status.update', { sessionId, status: 'disconnected' }); // Ou removida
+    emitEvent('status.update', { sessionId, status: 'disconnected' });
     return true;
 }
 
@@ -278,26 +260,20 @@ router.post('/sessions/delete', async (req, res) => {
 });
 
 router.get('/sessions', (req, res) => {
-    // Lista sessões ativas na memória E sessões salvas em disco
     const activeSessions = listSessions();
     const savedSessions = fs.existsSync(SESSIONS_DIR) ? fs.readdirSync(SESSIONS_DIR) : [];
-    
-    // Combina e remove duplicatas
     const allSessions = [...new Set([...activeSessions, ...savedSessions])];
-    
     res.json({ status: 'success', sessions: allSessions });
 });
 
 router.get('/sessions/:sessionId/status', (req, res) => {
     const { sessionId } = req.params;
     const session = sessions.get(sessionId);
-    
-    // Verifica se existe pasta, mesmo que não esteja na memória
     const existsOnDisk = fs.existsSync(path.join(SESSIONS_DIR, sessionId));
 
     if (!session) {
         return res.json({ 
-            status: existsOnDisk ? 'disconnected' : 'close', // disconnected = existe mas offline, close = não existe
+            status: existsOnDisk ? 'disconnected' : 'close',
             qr: null,
             user: null,
             stats: null

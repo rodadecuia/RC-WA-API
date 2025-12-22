@@ -1,6 +1,7 @@
 import express from 'express';
 import { formatJid, checkSession } from './utils.js';
 import { incrementStats } from './connection.js';
+import { convertToSticker } from './media-utils.js';
 
 const router = express.Router();
 
@@ -18,6 +19,26 @@ router.post('/send-text', checkSession, async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Falha ao enviar mensagem' });
+    }
+});
+
+router.post('/send-sticker', checkSession, async (req, res) => {
+    const { number, image, sessionId } = req.body; // image as base64
+    const jid = formatJid(number);
+    const sock = req.sessionData.sock;
+
+    if (!jid || !image) return res.status(400).json({ error: 'Número e imagem (base64) são obrigatórios' });
+
+    try {
+        const imageBuffer = Buffer.from(image, 'base64');
+        const stickerBuffer = await convertToSticker(imageBuffer);
+        
+        const result = await sock.sendMessage(jid, { sticker: stickerBuffer });
+        incrementStats(sessionId, 'sent');
+        res.json({ status: 'success', result });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Falha ao enviar sticker', details: error.message });
     }
 });
 

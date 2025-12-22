@@ -1,49 +1,91 @@
-import express from 'express';
-import { checkSession } from './utils.js';
+import fs from 'fs';
+import pino from 'pino';
 
-const router = express.Router();
+export function makeInMemoryStore({ logger }) {
+    const chats = new Map();
+    const messages = new Map();
+    const contacts = {};
+    let writeInterval;
 
-router.get('/chats', checkSession, (req, res) => {
-    try {
-        const store = req.sessionData.store;
-        if (!store) return res.status(503).json({ error: 'Store não disponível para esta sessão' });
+    const loadMessage = async (jid, id) => {
+        if (messages.has(jid)) {
+            const msgs = messages.get(jid);
+            return msgs.get(id);
+        }
+        return undefined;
+    };
 
-        const chats = store.chats.all();
-        res.json({ status: 'success', count: chats.length, data: chats });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Falha ao obter chats' });
-    }
-});
+    const bind = (ev) => {
+        ev.on('connection.update', (update) => {
+            Object.assign(contacts, update.contacts);
+        });
 
-router.get('/contacts', checkSession, (req, res) => {
-    try {
-        const store = req.sessionData.store;
-        if (!store) return res.status(503).json({ error: 'Store não disponível para esta sessão' });
+        ev.on('messaging-history.set', ({ chats: newChats, contacts: newContacts, messages: newMessages }) => {
+            if (newContacts) {
+                newContacts.forEach(c => contacts[c.id] = Object.assign(contacts[c.id] || {}, c));
+            }
+            if (newMessages) {
+                newMessages.forEach(msg => {
+                    const jid = msg.key.remoteJid;
+                    if (!messages.has(jid)) messages.set(jid, new Map());
+                    messages.get(jid).set(msg.key.id, msg);
+                });
+            }
+        });
 
-        const contacts = store.contacts;
-        const contactsList = Object.values(contacts);
-        res.json({ status: 'success', count: contactsList.length, data: contactsList });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Falha ao obter contatos' });
-    }
-});
+        ev.on('contacts.upsert', (newContacts) => {
+            newContacts.forEach(c => contacts[c.id] = Object.assign(contacts[c.id] || {}, c));
+        });
 
-router.get('/messages/:jid', checkSession, async (req, res) => {
-    const { jid } = req.params;
-    const limit = parseInt(req.query.limit) || 20;
-    const store = req.sessionData.store;
+        ev.on('messages.upsert', ({ messages: newMessages, type }) => {
+            if (type === 'notify' || type === 'append') {
+                newMessages.forEach(msg => {
+                    const jid = msg.key.remoteJid;
+                    if (!messages.has(jid)) messages.set(jid, new Map());
+                    messages.get(jid).set(msg.key.id, msg);
+                });
+            }
+        });
+    };
 
-    if (!store) return res.status(503).json({ error: 'Store não disponível para esta sessão' });
+    const writeToFile = (path) => {
+        try {
+            const json = JSON.stringify({
+                chats: Object.fromEntries(chats),
+                contacts,
+                messages: Object.fromEntries(
+                    Array.from(messages.entries()).map(([jid, msgs]) => [jid, Object.fromEntries(msgs)])
+                )
+            });
+            fs.writeFileSync(path, json);
+        } catch (error) {
+            logger.error({ error }, 'failed to write store');
+        }
+    };
 
-    try {
-        const messages = await store.loadMessages(jid, limit);
-        res.json({ status: 'success', count: messages.length, data: messages });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Falha ao obter mensagens' });
-    }
-});
+    const readFromFile = (path) => {
+        if (fs.existsSync(path)) {
+            try {
+                const json = JSON.parse(fs.readFileSync(path, { encoding: 'utf-8' }));
+                if (json.contacts) Object.assign(contacts, json.contacts);
+                if (json.messages) {
+                    Object.entries(json.messages).forEach(([jid, msgs]) => {
+                        messages.set(jid, new Map(Object.entries(msgs)));
+                    });
+                }
+            } catch (error) {
+                logger.error({ error }, 'failed to read store');
+            }
+        }
+    };
 
-export default router;
+    return {
+        chats,
+        contacts,
+        messages,
+        loadMessage,
+        bind,
+        writeToFile,
+        readFromFile
+    };
+}

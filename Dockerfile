@@ -1,15 +1,25 @@
-FROM node:lts-alpine
+FROM node:20-alpine
 
 # Cria o diretório de trabalho
 WORKDIR /usr/src/app
 
-# Instala git e dependências de build
-RUN apk add --no-cache git python3 make g++
+# Instala dependências do sistema
+# ffmpeg: necessário para manipulação de áudio/vídeo e stickers
+# git, python3, make, g++: necessários para compilar dependências nativas (node-gyp)
+RUN apk add --no-cache \
+    git \
+    python3 \
+    make \
+    g++ \
+    ffmpeg \
+    vips-dev
 
 # Copia os arquivos de dependências
 COPY package*.json ./
 
 # Limpa o cache e instala as dependências
+# --production=false garante que devDependencies (se necessárias para build) sejam instaladas,
+# mas aqui estamos instalando tudo para garantir.
 RUN npm cache clean --force && npm install
 
 # Copia o restante dos arquivos do projeto
