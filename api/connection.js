@@ -1,4 +1,5 @@
 import { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState } from '@whiskeysockets/baileys';
+import makeInMemoryStore from '@rodrigogs/baileys-store';
 import pino from 'pino';
 import { sendWebhook } from './webhook.js';
 import { emitEvent } from './socket.js';
@@ -6,7 +7,6 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import express from 'express';
-import { makeInMemoryStore } from './store.js'; // Importando do nosso arquivo local
 
 const sessions = new Map();
 const SESSIONS_DIR = './sessions_data';
@@ -41,7 +41,9 @@ export async function startSession(sessionId) {
 
             if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
 
+            // Inicializa o store usando @rodrigogs/baileys-store
             const store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
+
             try {
                 if (fs.existsSync(storePath)) store.readFromFile(storePath);
             } catch (err) {
@@ -61,7 +63,9 @@ export async function startSession(sessionId) {
                         auth: state,
                         printQRInTerminal: false,
                         logger: pino({ level: 'silent' }),
-                        browser: ["RC WA API", "Chrome", "1.0.0"],
+                        browser: ["RC Omni SaaS", "Chrome", "1.0.0"], // Atualizado conforme recomendação
+                        syncFullHistory: false, // Evita sobrecarga no primeiro login (v7)
+                        markOnlineOnConnect: true, // Recomendado para v7
                         getMessage: async (key) => (store.loadMessage(key.remoteJid, key.id))?.message || undefined,
                     });
 
@@ -78,6 +82,12 @@ export async function startSession(sessionId) {
                     sessions.set(sessionId, { sock, store, qr: null, interval: storeInterval, token: sessionToken, stats });
 
                     sock.ev.on('creds.update', saveCreds);
+
+                    // Tratamento de histórico para evitar flood (v7)
+                    sock.ev.on('messaging-history.set', ({ chats, contacts, messages, isLatest }) => {
+                        console.log(`Sessão ${sessionId}: Histórico recebido. Chats: ${chats.length}, Contatos: ${contacts.length}, Mensagens: ${messages.length}`);
+                        // Não enviamos webhook aqui para evitar derrubar o backend
+                    });
 
                     sock.ev.on('contacts.upsert', async () => {
                         const session = sessions.get(sessionId);
@@ -143,6 +153,7 @@ export async function startSession(sessionId) {
                     });
 
                     sock.ev.on('messages.upsert', async m => {
+                        // Filtra apenas mensagens novas (notify) para evitar processar histórico como novo
                         if (m.type === 'notify') {
                             for (const msg of m.messages) {
                                 if (!msg.key.fromMe) {
