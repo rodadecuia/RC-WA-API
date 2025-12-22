@@ -4,7 +4,8 @@
         <p class="text-muted mb-0" id="session-user" style="display: none;"><i class="bi bi-person-circle me-1"></i> <span id="session-user-name"></span> (<span id="session-user-jid"></span>)</p>
     </div>
     <div class="btn-toolbar mb-2 mb-md-0">
-        <button type="button" class="btn btn-sm btn-outline-danger" onclick="app.sessions.stop()"><i class="bi bi-stop-circle me-2"></i>Parar Sessão</button>
+        <button type="button" class="btn btn-sm btn-outline-warning me-2" onclick="app.sessions.stop()"><i class="bi bi-power me-2"></i>Desconectar</button>
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="app.sessions.delete()"><i class="bi bi-trash me-2"></i>Excluir</button>
     </div>
 </div>
 

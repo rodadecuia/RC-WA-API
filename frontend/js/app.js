@@ -53,7 +53,7 @@ const app = {
                 'connecting': 'Conectando...',
                 'disconnected': 'Desconectado',
                 'qr_received': 'Aguardando Leitura',
-                'close': 'Fechado'
+                'close': 'Não Iniciada'
             };
             return labels[status] || status;
         },
@@ -156,6 +156,13 @@ const app = {
                     new QRCode(container, { text: qrCode, width: 220, height: 220 });
                 } else if (status === 'open') {
                     container.innerHTML = '<div class="text-center text-success"><i class="bi bi-check-circle-fill display-1"></i><p class="fw-bold mt-2">Conectado!</p></div>';
+                } else if (status === 'disconnected') {
+                    container.innerHTML = `
+                        <div class="text-center">
+                            <i class="bi bi-plug-fill display-4 text-danger"></i>
+                            <p class="mt-2">Sessão Desconectada</p>
+                            <button class="btn btn-primary btn-sm" onclick="app.sessions.create()">Reconectar</button>
+                        </div>`;
                 } else {
                     container.innerHTML = '<div class="text-center text-muted"><i class="bi bi-hourglass-split display-4"></i><p>Aguardando...</p></div>';
                 }
@@ -224,8 +231,16 @@ const app = {
             }
         },
         async create() {
-            const sessionId = document.getElementById('newSessionId').value;
+            // Se chamado sem argumentos (reconectar), usa o ID atual
+            let sessionId = app.config.currentSessionId;
+            
+            // Se chamado pelo modal (nova sessão), pega do input
+            if (!sessionId || document.getElementById('newSessionId').value) {
+                sessionId = document.getElementById('newSessionId').value;
+            }
+            
             if (!sessionId) return;
+            
             try {
                 await fetch('/sessions/start', {
                     method: 'POST',
@@ -236,7 +251,7 @@ const app = {
                 document.getElementById('newSessionId').value = '';
                 app.router.navigate('session-details', { sessionId });
             } catch (e) {
-                alert('Erro ao criar sessão');
+                alert('Erro ao criar/iniciar sessão');
             }
         },
         async select(sessionId) {
@@ -249,9 +264,23 @@ const app = {
             }
         },
         async stop() {
-            if (!confirm(`Parar a sessão ${app.config.currentSessionId}?`)) return;
+            if (!confirm(`Deseja desconectar a sessão ${app.config.currentSessionId}? (Os dados serão mantidos)`)) return;
             try {
                 await fetch('/sessions/stop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': app.config.apiKey },
+                    body: JSON.stringify({ sessionId: app.config.currentSessionId })
+                });
+                // Atualiza a tela atual
+                app.sessions.select(app.config.currentSessionId);
+            } catch (e) {
+                alert('Erro ao desconectar sessão');
+            }
+        },
+        async delete() {
+            if (!confirm(`ATENÇÃO: Deseja EXCLUIR a sessão ${app.config.currentSessionId}? Isso fará logout e apagará todos os dados.`)) return;
+            try {
+                await fetch('/sessions/delete', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-api-key': app.config.apiKey },
                     body: JSON.stringify({ sessionId: app.config.currentSessionId })
@@ -259,7 +288,7 @@ const app = {
                 app.config.currentSessionId = null;
                 app.router.navigate('dashboard');
             } catch (e) {
-                alert('Erro ao parar sessão');
+                alert('Erro ao excluir sessão');
             }
         },
         async sendMessage() {

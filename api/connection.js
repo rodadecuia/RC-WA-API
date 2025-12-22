@@ -17,7 +17,6 @@ if (!fs.existsSync(SESSIONS_DIR)) {
 export const getSession = (sessionId) => sessions.get(sessionId);
 export const listSessions = () => Array.from(sessions.keys());
 
-// Função auxiliar para incrementar estatísticas
 export const incrementStats = (sessionId, type) => {
     const session = sessions.get(sessionId);
     if (session && session.stats) {
@@ -67,7 +66,6 @@ export async function startSession(sessionId) {
 
                     store.bind(sock.ev);
                     
-                    // Inicializa estatísticas
                     const stats = {
                         startTime: Date.now(),
                         messagesSent: 0,
@@ -83,7 +81,6 @@ export async function startSession(sessionId) {
                     sock.ev.on('contacts.upsert', async () => {
                         const session = sessions.get(sessionId);
                         if (session && session.store) {
-                            // Atualiza contagem de contatos
                             const contacts = Object.keys(session.store.contacts).length;
                             session.stats.contactsCount = contacts;
                         }
@@ -116,7 +113,10 @@ export async function startSession(sessionId) {
                             emitEvent('status.update', { sessionId, status: 'disconnected' });
 
                             if (shouldReconnect) {
-                                startSession(sessionId);
+                                // Verifica se a sessão ainda existe no mapa (não foi desconectada manualmente)
+                                if (sessions.has(sessionId)) {
+                                    startSession(sessionId);
+                                }
                             } else {
                                 deleteSession(sessionId);
                             }
@@ -124,9 +124,7 @@ export async function startSession(sessionId) {
                             console.log(`Sessão ${sessionId} conectada!`);
                             if (sessionData) {
                                 sessionData.qr = null;
-                                sessionData.stats.startTime = Date.now(); // Reinicia tempo de conexão ao conectar
-                                
-                                // Tenta buscar blocklist inicial
+                                sessionData.stats.startTime = Date.now();
                                 try {
                                     const blocklist = await sock.fetchBlocklist();
                                     sessionData.stats.blockedCount = blocklist.length;
@@ -152,7 +150,6 @@ export async function startSession(sessionId) {
                                     const webhookPayload = { ...msg, sessionId, sessionToken };
                                     sendWebhook('message.received', webhookPayload);
                                 } else {
-                                    // Mensagens enviadas pelo próprio celular (sincronizadas)
                                     incrementStats(sessionId, 'sent');
                                 }
                             }
@@ -167,8 +164,27 @@ export async function startSession(sessionId) {
     });
 }
 
+// Apenas desconecta (mantém arquivos)
+export async function disconnectSession(sessionId) {
+    const session = sessions.get(sessionId);
+    if (session) {
+        // Remove listeners para evitar reconexão automática indesejada
+        session.sock.ev.removeAllListeners('connection.update');
+        session.sock.end(undefined);
+        if (session.interval) clearInterval(session.interval);
+        sessions.delete(sessionId);
+        console.log(`Sessão ${sessionId} desconectada (arquivos mantidos).`);
+        emitEvent('status.update', { sessionId, status: 'disconnected' });
+        return true;
+    }
+    return false;
+}
+
+// Desconecta e apaga arquivos (Logout)
 export async function deleteSession(sessionId) {
     const session = sessions.get(sessionId);
+    const sessionPath = path.join(SESSIONS_DIR, sessionId);
+
     if (session) {
         if (session.sock) {
             try { await session.sock.logout(); } catch (e) {}
@@ -176,10 +192,16 @@ export async function deleteSession(sessionId) {
         }
         if (session.interval) clearInterval(session.interval);
         sessions.delete(sessionId);
-        console.log(`Sessão ${sessionId} removida.`);
-        return true;
     }
-    return false;
+
+    // Garante a remoção da pasta
+    if (fs.existsSync(sessionPath)) {
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+    }
+
+    console.log(`Sessão ${sessionId} excluída.`);
+    emitEvent('status.update', { sessionId, status: 'disconnected' }); // Ou removida
+    return true;
 }
 
 export const initSavedSessions = async () => {
@@ -219,24 +241,54 @@ router.post('/sessions/stop', async (req, res) => {
     if (!sessionId) return res.status(400).json({ error: 'sessionId é obrigatório' });
     
     try {
-        const result = await deleteSession(sessionId);
-        if (result) res.json({ status: 'success', message: `Sessão ${sessionId} parada` });
-        else res.status(404).json({ error: 'Sessão não encontrada' });
+        const result = await disconnectSession(sessionId);
+        if (result) res.json({ status: 'success', message: `Sessão ${sessionId} desconectada` });
+        else res.status(404).json({ error: 'Sessão não encontrada ou já desconectada' });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: `Falha ao parar sessão: ${error.message}` });
+        res.status(500).json({ error: `Falha ao desconectar sessão: ${error.message}` });
+    }
+});
+
+router.post('/sessions/delete', async (req, res) => {
+    const { sessionId } = req.body;
+    if (!sessionId) return res.status(400).json({ error: 'sessionId é obrigatório' });
+    
+    try {
+        await deleteSession(sessionId);
+        res.json({ status: 'success', message: `Sessão ${sessionId} excluída` });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: `Falha ao excluir sessão: ${error.message}` });
     }
 });
 
 router.get('/sessions', (req, res) => {
-    res.json({ status: 'success', sessions: listSessions() });
+    // Lista sessões ativas na memória E sessões salvas em disco
+    const activeSessions = listSessions();
+    const savedSessions = fs.existsSync(SESSIONS_DIR) ? fs.readdirSync(SESSIONS_DIR) : [];
+    
+    // Combina e remove duplicatas
+    const allSessions = [...new Set([...activeSessions, ...savedSessions])];
+    
+    res.json({ status: 'success', sessions: allSessions });
 });
 
 router.get('/sessions/:sessionId/status', (req, res) => {
     const { sessionId } = req.params;
     const session = sessions.get(sessionId);
     
-    if (!session) return res.status(404).json({ error: 'Sessão não encontrada' });
+    // Verifica se existe pasta, mesmo que não esteja na memória
+    const existsOnDisk = fs.existsSync(path.join(SESSIONS_DIR, sessionId));
+
+    if (!session) {
+        return res.json({ 
+            status: existsOnDisk ? 'disconnected' : 'close', // disconnected = existe mas offline, close = não existe
+            qr: null,
+            user: null,
+            stats: null
+        });
+    }
     
     const status = session.sock?.user ? 'open' : (session.qr ? 'qr_received' : 'connecting');
     
@@ -245,7 +297,6 @@ router.get('/sessions/:sessionId/status', (req, res) => {
         name: session.sock.user.name || session.sock.user.notify
     } : null;
 
-    // Atualiza contagem de contatos antes de enviar (caso o evento não tenha disparado)
     if (session.store && session.store.contacts) {
         session.stats.contactsCount = Object.keys(session.store.contacts).length;
     }
@@ -255,6 +306,6 @@ router.get('/sessions/:sessionId/status', (req, res) => {
         qr: session.qr,
         sessionToken: session.token,
         user: userData,
-        stats: session.stats // Inclui estatísticas na resposta
+        stats: session.stats
     });
 });
