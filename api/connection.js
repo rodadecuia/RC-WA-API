@@ -1,11 +1,10 @@
-import { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState } from '@whiskeysockets/baileys';
+import Baileys, { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState, makeInMemoryStore } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { sendWebhook } from './webhook.js';
 import { emitEvent } from './socket.js';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { makeInMemoryStore } from './baileysStore.js';
 import express from 'express';
 
 const sessions = new Map();
@@ -46,7 +45,7 @@ export async function startSession(sessionId) {
 
             useMultiFileAuthState(authPath).then(({ state, saveCreds }) => {
                 fetchLatestBaileysVersion().then(({ version }) => {
-                    console.log(`Iniciando sessão: ${sessionId} (Token: ${sessionToken})`);
+                    console.log(`Iniciando sessão: ${sessionId} (v${version.join('.')})`);
 
                     const sock = makeWASocket({
                         version,
@@ -111,14 +110,8 @@ export async function startSession(sessionId) {
                             }
                         }
                     });
-                }).catch(err => {
-                    console.error(`Erro ao obter versão do Baileys: ${err}`);
-                    reject(err);
-                });
-            }).catch(err => {
-                console.error(`Erro ao carregar auth state: ${err}`);
-                reject(err);
-            });
+                }).catch(reject);
+            }).catch(reject);
         } catch (error) {
             console.error(`Erro fatal ao iniciar sessão ${sessionId}:`, error);
             reject(error);
