@@ -18,8 +18,6 @@ RUN apk add --no-cache \
 COPY package*.json ./
 
 # Limpa o cache e instala as dependências
-# --production=false garante que devDependencies (se necessárias para build) sejam instaladas,
-# mas aqui estamos instalando tudo para garantir.
 RUN npm cache clean --force && npm install
 
 # Copia o restante dos arquivos do projeto
