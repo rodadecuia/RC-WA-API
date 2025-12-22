@@ -17,6 +17,15 @@ if (!fs.existsSync(SESSIONS_DIR)) {
 export const getSession = (sessionId) => sessions.get(sessionId);
 export const listSessions = () => Array.from(sessions.keys());
 
+// Função auxiliar para incrementar estatísticas
+export const incrementStats = (sessionId, type) => {
+    const session = sessions.get(sessionId);
+    if (session && session.stats) {
+        if (type === 'sent') session.stats.messagesSent++;
+        if (type === 'received') session.stats.messagesReceived++;
+    }
+};
+
 export async function startSession(sessionId) {
     return new Promise((resolve, reject) => {
         try {
@@ -57,11 +66,37 @@ export async function startSession(sessionId) {
                     });
 
                     store.bind(sock.ev);
-                    sessions.set(sessionId, { sock, store, qr: null, interval: storeInterval, token: sessionToken });
+                    
+                    // Inicializa estatísticas
+                    const stats = {
+                        startTime: Date.now(),
+                        messagesSent: 0,
+                        messagesReceived: 0,
+                        contactsCount: 0,
+                        blockedCount: 0
+                    };
+
+                    sessions.set(sessionId, { sock, store, qr: null, interval: storeInterval, token: sessionToken, stats });
 
                     sock.ev.on('creds.update', saveCreds);
 
-                    sock.ev.on('connection.update', (update) => {
+                    sock.ev.on('contacts.upsert', async () => {
+                        const session = sessions.get(sessionId);
+                        if (session && session.store) {
+                            // Atualiza contagem de contatos
+                            const contacts = Object.keys(session.store.contacts).length;
+                            session.stats.contactsCount = contacts;
+                        }
+                    });
+
+                    sock.ev.on('blocklist.update', async ({ blocklist }) => {
+                         const session = sessions.get(sessionId);
+                         if (session) {
+                             session.stats.blockedCount = blocklist.length;
+                         }
+                    });
+
+                    sock.ev.on('connection.update', async (update) => {
                         const { connection, lastDisconnect, qr } = update;
                         const sessionData = sessions.get(sessionId);
 
@@ -87,7 +122,16 @@ export async function startSession(sessionId) {
                             }
                         } else if (connection === 'open') {
                             console.log(`Sessão ${sessionId} conectada!`);
-                            if (sessionData) sessionData.qr = null;
+                            if (sessionData) {
+                                sessionData.qr = null;
+                                sessionData.stats.startTime = Date.now(); // Reinicia tempo de conexão ao conectar
+                                
+                                // Tenta buscar blocklist inicial
+                                try {
+                                    const blocklist = await sock.fetchBlocklist();
+                                    sessionData.stats.blockedCount = blocklist.length;
+                                } catch (e) {}
+                            }
                             
                             const userJid = sock.user?.id ? sock.user.id.split(':')[0] + '@s.whatsapp.net' : undefined;
                             const userName = sock.user?.name || sock.user?.notify || undefined;
@@ -104,8 +148,12 @@ export async function startSession(sessionId) {
                         if (m.type === 'notify') {
                             for (const msg of m.messages) {
                                 if (!msg.key.fromMe) {
+                                    incrementStats(sessionId, 'received');
                                     const webhookPayload = { ...msg, sessionId, sessionToken };
                                     sendWebhook('message.received', webhookPayload);
+                                } else {
+                                    // Mensagens enviadas pelo próprio celular (sincronizadas)
+                                    incrementStats(sessionId, 'sent');
                                 }
                             }
                         }
@@ -197,10 +245,16 @@ router.get('/sessions/:sessionId/status', (req, res) => {
         name: session.sock.user.name || session.sock.user.notify
     } : null;
 
+    // Atualiza contagem de contatos antes de enviar (caso o evento não tenha disparado)
+    if (session.store && session.store.contacts) {
+        session.stats.contactsCount = Object.keys(session.store.contacts).length;
+    }
+
     res.json({ 
         status, 
         qr: session.qr,
         sessionToken: session.token,
-        user: userData
+        user: userData,
+        stats: session.stats // Inclui estatísticas na resposta
     });
 });

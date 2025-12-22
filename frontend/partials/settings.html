@@ -1,0 +1,15 @@
+<h1 class="h2 mb-4">Configurações</h1>
+<div class="card">
+    <div class="card-header">API</div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label for="apiKeyDisplay" class="form-label">Sua Chave de API</label>
+            <div class="input-group">
+                <input type="password" id="apiKeyDisplay" class="form-control" readonly>
+                <button class="btn btn-outline-secondary" type="button" id="toggleApiKeyVisibility"><i class="bi bi-eye"></i></button>
+            </div>
+        </div>
+        <a href="/api-docs.json" class="btn btn-outline-primary" download="swagger.json"><i class="bi bi-download me-2"></i>Baixar JSON da API</a>
+        <button class="btn btn-outline-danger" onclick="app.auth.logout()"><i class="bi bi-box-arrow-right me-2"></i>Sair (Logout)</button>
+    </div>
+</div>

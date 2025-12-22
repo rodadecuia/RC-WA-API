@@ -1,0 +1,13 @@
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2">Dashboard</h1>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newSessionModal"><i class="bi bi-plus-circle-fill me-2"></i>Nova Sessão</button>
+</div>
+<div class="row">
+    <div class="col-md-4 mb-3"><div class="card text-center"><div class="card-body"><h5 class="card-title" id="total-sessions">0</h5><p class="card-text text-muted">Total de Sessões</p></div></div></div>
+    <div class="col-md-4 mb-3"><div class="card text-center text-bg-success"><div class="card-body"><h5 class="card-title" id="connected-sessions">0</h5><p class="card-text">Conectadas</p></div></div></div>
+    <div class="col-md-4 mb-3"><div class="card text-center text-bg-danger"><div class="card-body"><h5 class="card-title" id="disconnected-sessions">0</h5><p class="card-text">Desconectadas</p></div></div></div>
+</div>
+<h4 class="mt-4">Sessões</h4>
+<div id="sessionsList" class="list-group">
+    <div class="list-group-item text-center text-muted">Carregando...</div>
+</div>

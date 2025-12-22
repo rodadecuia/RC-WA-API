@@ -1,10 +1,11 @@
 import express from 'express';
 import { formatJid, checkSession } from './utils.js';
+import { incrementStats } from './connection.js';
 
 const router = express.Router();
 
 router.post('/send-text', checkSession, async (req, res) => {
-    const { number, message } = req.body;
+    const { number, message, sessionId } = req.body;
     const jid = formatJid(number);
     const sock = req.sessionData.sock;
 
@@ -12,6 +13,7 @@ router.post('/send-text', checkSession, async (req, res) => {
 
     try {
         const result = await sock.sendMessage(jid, { text: message });
+        incrementStats(sessionId, 'sent');
         res.json({ status: 'success', result });
     } catch (error) {
         console.error(error);
@@ -20,7 +22,7 @@ router.post('/send-text', checkSession, async (req, res) => {
 });
 
 router.post('/send-location', checkSession, async (req, res) => {
-    const { number, lat, long, address } = req.body;
+    const { number, lat, long, address, sessionId } = req.body;
     const jid = formatJid(number);
     const sock = req.sessionData.sock;
 
@@ -30,6 +32,7 @@ router.post('/send-location', checkSession, async (req, res) => {
         const result = await sock.sendMessage(jid, { 
             location: { degreesLatitude: lat, degreesLongitude: long, address: address }
         });
+        incrementStats(sessionId, 'sent');
         res.json({ status: 'success', result });
     } catch (error) {
         console.error(error);
@@ -38,7 +41,7 @@ router.post('/send-location', checkSession, async (req, res) => {
 });
 
 router.post('/send-contact', checkSession, async (req, res) => {
-    const { number, contactName, contactNumber } = req.body;
+    const { number, contactName, contactNumber, sessionId } = req.body;
     const jid = formatJid(number);
     const sock = req.sessionData.sock;
 
@@ -57,6 +60,7 @@ router.post('/send-contact', checkSession, async (req, res) => {
                 contacts: [{ vcard }] 
             }
         });
+        incrementStats(sessionId, 'sent');
         res.json({ status: 'success', result });
     } catch (error) {
         console.error(error);
@@ -65,7 +69,7 @@ router.post('/send-contact', checkSession, async (req, res) => {
 });
 
 router.post('/send-reaction', checkSession, async (req, res) => {
-    const { number, text, keyId } = req.body;
+    const { number, text, keyId, sessionId } = req.body;
     const jid = formatJid(number);
     const sock = req.sessionData.sock;
 
@@ -79,6 +83,7 @@ router.post('/send-reaction', checkSession, async (req, res) => {
             }
         };
         const result = await sock.sendMessage(jid, reactionMessage);
+        incrementStats(sessionId, 'sent');
         res.json({ status: 'success', result });
     } catch (error) {
         console.error(error);
