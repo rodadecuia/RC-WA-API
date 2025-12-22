@@ -1,4 +1,4 @@
-import Baileys, { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState, makeInMemoryStore } from '@whiskeysockets/baileys';
+import { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState, makeInMemoryStore } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { sendWebhook } from './webhook.js';
 import { emitEvent } from './socket.js';
@@ -40,16 +40,18 @@ export async function startSession(sessionId) {
 
             if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
 
-            const store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
+            // Tenta inicializar o store apenas se a função existir
+            let store;
             try {
+                store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
                 if (fs.existsSync(storePath)) store.readFromFile(storePath);
-            } catch (err) {
-                console.log(`Erro ao ler store da sessão ${sessionId}:`, err.message);
+                
+                const storeInterval = setInterval(() => {
+                    store.writeToFile(storePath);
+                }, 10_000);
+            } catch (e) {
+                console.warn('makeInMemoryStore não disponível ou falhou ao iniciar. O armazenamento de mensagens em memória será desativado.', e.message);
             }
-
-            const storeInterval = setInterval(() => {
-                store.writeToFile(storePath);
-            }, 10_000);
 
             useMultiFileAuthState(authPath).then(({ state, saveCreds }) => {
                 fetchLatestBaileysVersion().then(({ version }) => {
@@ -61,10 +63,15 @@ export async function startSession(sessionId) {
                         printQRInTerminal: false,
                         logger: pino({ level: 'silent' }),
                         browser: ["RC WA API", "Chrome", "1.0.0"],
-                        getMessage: async (key) => (store.loadMessage(key.remoteJid, key.id))?.message || undefined,
+                        getMessage: async (key) => {
+                            if (store) {
+                                return (await store.loadMessage(key.remoteJid, key.id))?.message || undefined;
+                            }
+                            return undefined;
+                        },
                     });
 
-                    store.bind(sock.ev);
+                    if (store) store.bind(sock.ev);
                     
                     const stats = {
                         startTime: Date.now(),
@@ -74,13 +81,20 @@ export async function startSession(sessionId) {
                         blockedCount: 0
                     };
 
-                    sessions.set(sessionId, { sock, store, qr: null, interval: storeInterval, token: sessionToken, stats });
+                    sessions.set(sessionId, { 
+                        sock, 
+                        store, 
+                        qr: null, 
+                        interval: store?.interval, // Ajuste aqui caso o intervalo esteja atrelado ao store
+                        token: sessionToken, 
+                        stats 
+                    });
 
                     sock.ev.on('creds.update', saveCreds);
 
                     sock.ev.on('contacts.upsert', async () => {
                         const session = sessions.get(sessionId);
-                        if (session && session.store) {
+                        if (session && session.store && session.store.contacts) {
                             const contacts = Object.keys(session.store.contacts).length;
                             session.stats.contactsCount = contacts;
                         }
