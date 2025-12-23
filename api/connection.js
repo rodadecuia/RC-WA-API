@@ -1,5 +1,5 @@
 import { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState } from '@whiskeysockets/baileys';
-import Store from '@rodrigogs/baileys-store';
+import { makeInMemoryStore } from './store.js'; // Usando nosso store local
 import pino from 'pino';
 import { sendWebhook } from './webhook.js';
 import { emitEvent } from './socket.js';
@@ -7,10 +7,6 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import express from 'express';
-
-// Correção para importação de módulo CommonJS em ambiente ESM
-// Se a importação for um objeto com a propriedade 'default', usamos ela. Senão, usamos a própria importação.
-const makeInMemoryStore = Store.default || Store;
 
 const sessions = new Map();
 const SESSIONS_DIR = './sessions_data';
@@ -51,13 +47,6 @@ export async function startSession(sessionId, options = {}) {
             const storePath = path.join(sessionPath, 'store.json');
 
             if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
-
-            // Validação da importação do Store
-            if (typeof makeInMemoryStore !== 'function') {
-                const errorMsg = `Falha crítica: makeInMemoryStore não é uma função. Verifique a compatibilidade do pacote @rodrigogs/baileys-store.`;
-                console.error(errorMsg);
-                return reject(new TypeError(errorMsg));
-            }
 
             const store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
             
