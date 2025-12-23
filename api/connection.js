@@ -29,15 +29,24 @@ export const incrementStats = (sessionId, type) => {
 export async function startSession(sessionId, options = {}) {
     return new Promise((resolve, reject) => {
         try {
-            if (sessions.has(sessionId) && sessions.get(sessionId).sock?.user && !options.forceReconnect) {
-                console.log(`Sessão ${sessionId} já está ativa.`);
-                return resolve(sessions.get(sessionId));
-            }
+            const existingSession = sessions.get(sessionId);
+            let msgRetryCounterCache = new Map();
 
-            if (sessions.has(sessionId) && options.forceReconnect) {
-                const oldSession = sessions.get(sessionId);
-                if (oldSession.sock) oldSession.sock.end(undefined);
-                if (oldSession.interval) clearInterval(oldSession.interval);
+            if (existingSession) {
+                if (existingSession.sock?.user && !options.forceReconnect) {
+                    console.log(`Sessão ${sessionId} já está ativa.`);
+                    return resolve(existingSession);
+                }
+                
+                if (existingSession.msgRetryCounterCache) {
+                    msgRetryCounterCache = existingSession.msgRetryCounterCache;
+                }
+
+                if (existingSession.sock) {
+                    existingSession.sock.ev.removeAllListeners('connection.update');
+                    existingSession.sock.end(undefined);
+                }
+                if (existingSession.interval) clearInterval(existingSession.interval);
                 sessions.delete(sessionId);
             }
 
@@ -69,9 +78,15 @@ export async function startSession(sessionId, options = {}) {
                         auth: state,
                         printQRInTerminal: false,
                         logger: pino({ level: 'silent' }),
-                        browser: ["RC Omni SaaS", "Chrome", "1.0.0"],
+                        browser: ["RC WA API", "Chrome", "1.0.0"],
                         syncFullHistory: options.syncFullHistory || false,
                         markOnlineOnConnect: true,
+                        generateHighQualityLinkPreview: true,
+                        connectTimeoutMs: 60000,
+                        defaultQueryTimeoutMs: 60000,
+                        keepAliveIntervalMs: 10000,
+                        retryRequestDelayMs: 5000,
+                        msgRetryCounterCache,
                         getMessage: async (key) => (store.loadMessage(key.remoteJid, key.id))?.message || undefined,
                     });
 
@@ -85,7 +100,7 @@ export async function startSession(sessionId, options = {}) {
                         blockedCount: 0
                     };
 
-                    sessions.set(sessionId, { sock, store, qr: null, interval: storeInterval, token: sessionToken, stats });
+                    sessions.set(sessionId, { sock, store, qr: null, interval: storeInterval, token: sessionToken, stats, msgRetryCounterCache });
 
                     sock.ev.on('creds.update', saveCreds);
 
@@ -113,7 +128,18 @@ export async function startSession(sessionId, options = {}) {
 
                     sock.ev.on('connection.update', async (update) => {
                         const { connection, lastDisconnect, qr } = update;
-                        const sessionData = sessions.get(sessionId);
+                        
+                        const currentSession = sessions.get(sessionId);
+                        if (currentSession && currentSession.sock !== sock) {
+                            return;
+                        }
+
+                        const sessionData = currentSession;
+
+                        if (connection === 'connecting') {
+                            console.log(`Sessão ${sessionId} conectando...`);
+                            emitEvent('status.update', { sessionId, status: 'connecting' });
+                        }
 
                         if (qr) {
                             if (sessionData) sessionData.qr = qr;
@@ -123,16 +149,26 @@ export async function startSession(sessionId, options = {}) {
                         }
 
                         if (connection === 'close') {
-                            const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-                            console.log(`Sessão ${sessionId} fechada. Reconectar: ${shouldReconnect}`);
+                            const statusCode = (lastDisconnect.error)?.output?.statusCode;
+                            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+                            
+                            console.log(`Sessão ${sessionId} fechada. Código: ${statusCode}, Razão: ${lastDisconnect.error?.message}, Reconectar: ${shouldReconnect}`);
                             
                             const eventData = { sessionId, reason: lastDisconnect.error?.message, shouldReconnect, sessionToken };
                             sendWebhook('connection.close', eventData);
                             emitEvent('status.update', { sessionId, status: 'disconnected' });
 
                             if (shouldReconnect) {
+                                emitEvent('status.update', { sessionId, status: 'reconnecting' });
+                                // Adicionado delay mínimo de 2s mesmo para restartRequired para evitar loops muito rápidos
+                                const delay = statusCode === DisconnectReason.restartRequired ? 2000 : 5000;
                                 if (sessions.has(sessionId)) {
-                                    startSession(sessionId, options); 
+                                    setTimeout(() => {
+                                        if (sessions.has(sessionId)) {
+                                            startSession(sessionId, { ...options, forceReconnect: true })
+                                                .catch(err => console.error(`Erro ao reconectar sessão ${sessionId}:`, err));
+                                        }
+                                    }, delay);
                                 }
                             } else {
                                 deleteSession(sessionId);
@@ -173,10 +209,12 @@ export async function startSession(sessionId, options = {}) {
                         }
                     });
                 }).catch(err => {
+                    clearInterval(storeInterval);
                     console.error(`Erro ao buscar versão ou autenticação para sessão ${sessionId}:`, err);
                     reject(err);
                 });
             }).catch(err => {
+                clearInterval(storeInterval);
                 console.error(`Erro ao carregar estado de autenticação para sessão ${sessionId}:`, err);
                 reject(err);
             });
