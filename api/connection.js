@@ -1,5 +1,5 @@
 import { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState } from '@whiskeysockets/baileys';
-import * as BaileysStorePkg from '@rodrigogs/baileys-store';
+import Store from '@rodrigogs/baileys-store';
 import pino from 'pino';
 import { sendWebhook } from './webhook.js';
 import { emitEvent } from './socket.js';
@@ -8,16 +8,9 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import express from 'express';
 
-// Debug da importação
-// console.log('Conteúdo do pacote @rodrigogs/baileys-store:', BaileysStorePkg);
-
-// Tenta extrair a função corretamente
-let makeInMemoryStore = BaileysStorePkg.default || BaileysStorePkg.makeInMemoryStore || BaileysStorePkg;
-
-// Se ainda for um objeto com default dentro (caso de import * as)
-if (makeInMemoryStore && makeInMemoryStore.default) {
-    makeInMemoryStore = makeInMemoryStore.default;
-}
+// Correção para importação de módulo CommonJS em ambiente ESM
+// Se a importação for um objeto com a propriedade 'default', usamos ela. Senão, usamos a própria importação.
+const makeInMemoryStore = Store.default || Store;
 
 const sessions = new Map();
 const SESSIONS_DIR = './sessions_data';
@@ -59,38 +52,23 @@ export async function startSession(sessionId, options = {}) {
 
             if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
 
-            // Inicializa o store com fallback
-            let store;
-            try {
-                if (typeof makeInMemoryStore === 'function') {
-                    store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
-                } else {
-                    console.warn('⚠️ makeInMemoryStore não é uma função válida. Usando store simplificado de fallback.');
-                    store = {
-                        bind: () => {},
-                        readFromFile: () => {},
-                        writeToFile: () => {},
-                        loadMessage: async () => undefined,
-                        contacts: {}
-                    };
-                }
+            // Validação da importação do Store
+            if (typeof makeInMemoryStore !== 'function') {
+                const errorMsg = `Falha crítica: makeInMemoryStore não é uma função. Verifique a compatibilidade do pacote @rodrigogs/baileys-store.`;
+                console.error(errorMsg);
+                return reject(new TypeError(errorMsg));
+            }
 
+            const store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
+            
+            try {
                 if (fs.existsSync(storePath)) store.readFromFile(storePath);
             } catch (err) {
-                console.error(`Erro ao inicializar store da sessão ${sessionId}:`, err);
-                store = {
-                    bind: () => {},
-                    readFromFile: () => {},
-                    writeToFile: () => {},
-                    loadMessage: async () => undefined,
-                    contacts: {}
-                };
+                console.log(`Erro ao ler store da sessão ${sessionId}:`, err.message);
             }
 
             const storeInterval = setInterval(() => {
-                try {
-                    store.writeToFile(storePath);
-                } catch (e) {}
+                store.writeToFile(storePath);
             }, 10_000);
 
             useMultiFileAuthState(authPath).then(({ state, saveCreds }) => {
@@ -205,8 +183,14 @@ export async function startSession(sessionId, options = {}) {
                             }
                         }
                     });
-                }).catch(reject);
-            }).catch(reject);
+                }).catch(err => {
+                    console.error(`Erro ao buscar versão ou autenticação para sessão ${sessionId}:`, err);
+                    reject(err);
+                });
+            }).catch(err => {
+                console.error(`Erro ao carregar estado de autenticação para sessão ${sessionId}:`, err);
+                reject(err);
+            });
         } catch (error) {
             console.error(`Erro fatal ao iniciar sessão ${sessionId}:`, error);
             reject(error);
@@ -285,8 +269,11 @@ router.post('/sessions/start', async (req, res) => {
             sessionToken: session?.token
         });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: `Falha ao iniciar sessão: ${error.message}` });
+        console.error('Erro detalhado ao iniciar sessão:', error);
+        res.status(500).json({ 
+            error: `Falha ao iniciar sessão: ${error.message}`,
+            stack: error.stack 
+        });
     }
 });
 
