@@ -1,5 +1,5 @@
 import { DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState } from '@whiskeysockets/baileys';
-import makeInMemoryStore from '@rodrigogs/baileys-store';
+import * as BaileysStorePkg from '@rodrigogs/baileys-store';
 import pino from 'pino';
 import { sendWebhook } from './webhook.js';
 import { emitEvent } from './socket.js';
@@ -7,6 +7,17 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import express from 'express';
+
+// Debug da importação
+// console.log('Conteúdo do pacote @rodrigogs/baileys-store:', BaileysStorePkg);
+
+// Tenta extrair a função corretamente
+let makeInMemoryStore = BaileysStorePkg.default || BaileysStorePkg.makeInMemoryStore || BaileysStorePkg;
+
+// Se ainda for um objeto com default dentro (caso de import * as)
+if (makeInMemoryStore && makeInMemoryStore.default) {
+    makeInMemoryStore = makeInMemoryStore.default;
+}
 
 const sessions = new Map();
 const SESSIONS_DIR = './sessions_data';
@@ -29,13 +40,11 @@ export const incrementStats = (sessionId, type) => {
 export async function startSession(sessionId, options = {}) {
     return new Promise((resolve, reject) => {
         try {
-            // Se já existe e não estamos forçando reconexão (ex: para sync), retorna a existente
             if (sessions.has(sessionId) && sessions.get(sessionId).sock?.user && !options.forceReconnect) {
                 console.log(`Sessão ${sessionId} já está ativa.`);
                 return resolve(sessions.get(sessionId));
             }
 
-            // Se forçar reconexão, desconecta a anterior primeiro
             if (sessions.has(sessionId) && options.forceReconnect) {
                 const oldSession = sessions.get(sessionId);
                 if (oldSession.sock) oldSession.sock.end(undefined);
@@ -50,17 +59,38 @@ export async function startSession(sessionId, options = {}) {
 
             if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
 
-            // Inicializa o store usando @rodrigogs/baileys-store
-            const store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
-
+            // Inicializa o store com fallback
+            let store;
             try {
+                if (typeof makeInMemoryStore === 'function') {
+                    store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
+                } else {
+                    console.warn('⚠️ makeInMemoryStore não é uma função válida. Usando store simplificado de fallback.');
+                    store = {
+                        bind: () => {},
+                        readFromFile: () => {},
+                        writeToFile: () => {},
+                        loadMessage: async () => undefined,
+                        contacts: {}
+                    };
+                }
+
                 if (fs.existsSync(storePath)) store.readFromFile(storePath);
             } catch (err) {
-                console.log(`Erro ao ler store da sessão ${sessionId}:`, err.message);
+                console.error(`Erro ao inicializar store da sessão ${sessionId}:`, err);
+                store = {
+                    bind: () => {},
+                    readFromFile: () => {},
+                    writeToFile: () => {},
+                    loadMessage: async () => undefined,
+                    contacts: {}
+                };
             }
 
             const storeInterval = setInterval(() => {
-                store.writeToFile(storePath);
+                try {
+                    store.writeToFile(storePath);
+                } catch (e) {}
             }, 10_000);
 
             useMultiFileAuthState(authPath).then(({ state, saveCreds }) => {
@@ -73,7 +103,7 @@ export async function startSession(sessionId, options = {}) {
                         printQRInTerminal: false,
                         logger: pino({ level: 'silent' }),
                         browser: ["RC Omni SaaS", "Chrome", "1.0.0"],
-                        syncFullHistory: options.syncFullHistory || false, // Controlado por opção
+                        syncFullHistory: options.syncFullHistory || false,
                         markOnlineOnConnect: true,
                         getMessage: async (key) => (store.loadMessage(key.remoteJid, key.id))?.message || undefined,
                     });
@@ -92,10 +122,8 @@ export async function startSession(sessionId, options = {}) {
 
                     sock.ev.on('creds.update', saveCreds);
 
-                    // Tratamento de histórico
                     sock.ev.on('messaging-history.set', ({ chats, contacts, messages, isLatest }) => {
                         console.log(`Sessão ${sessionId}: Histórico recebido. Chats: ${chats.length}, Contatos: ${contacts.length}, Mensagens: ${messages.length}`);
-                        // Se syncFullHistory for true, talvez queira notificar que terminou
                         if (options.syncFullHistory) {
                             console.log(`Sessão ${sessionId}: Sincronização completa de histórico finalizada.`);
                         }
@@ -137,7 +165,6 @@ export async function startSession(sessionId, options = {}) {
 
                             if (shouldReconnect) {
                                 if (sessions.has(sessionId)) {
-                                    // Reconecta com as mesmas opções originais se possível, ou padrão
                                     startSession(sessionId, options); 
                                 }
                             } else {
@@ -226,12 +253,20 @@ export async function deleteSession(sessionId) {
 export const initSavedSessions = async () => {
     if (fs.existsSync(SESSIONS_DIR)) {
         const files = fs.readdirSync(SESSIONS_DIR);
+        console.log(`Encontradas ${files.length} pastas em sessions_data.`);
+        
         const promises = files.map(file => {
-            if (fs.existsSync(path.join(SESSIONS_DIR, file, 'auth'))) {
+            const authPath = path.join(SESSIONS_DIR, file, 'auth');
+            if (fs.existsSync(authPath)) {
+                console.log(`Restaurando sessão salva: ${file}`);
                 return startSession(file).catch(err => console.error(`Falha ao restaurar sessão ${file}:`, err));
+            } else {
+                console.log(`Pasta ${file} ignorada (sem pasta auth).`);
             }
         }).filter(p => p);
         await Promise.all(promises);
+    } else {
+        console.log('Nenhuma pasta sessions_data encontrada.');
     }
 };
 
@@ -287,12 +322,10 @@ router.post('/sessions/sync-history', async (req, res) => {
     if (!sessionId) return res.status(400).json({ error: 'sessionId é obrigatório' });
     
     try {
-        // Reinicia a sessão forçando a reconexão e ativando o syncFullHistory
         await startSession(sessionId, { forceReconnect: true, syncFullHistory: true });
-        
         res.json({ 
             status: 'success', 
-            message: `Sincronização de histórico iniciada para a sessão ${sessionId}. Isso pode levar alguns minutos.` 
+            message: `Sincronização de histórico iniciada para a sessão ${sessionId}.`
         });
     } catch (error) {
         console.error(error);
