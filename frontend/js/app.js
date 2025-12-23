@@ -152,8 +152,7 @@ const app = {
             const container = document.getElementById('qrCodeContainer');
             if (container) {
                 if (qr) {
-                    container.innerHTML = '';
-                    new QRCode(container, { text: qrCode, width: 220, height: 220 });
+                    app.ui.renderQr(qr);
                 } else if (status === 'open') {
                     container.innerHTML = '<div class="text-center text-success"><i class="bi bi-check-circle-fill display-1"></i><p class="fw-bold mt-2">Conectado!</p></div>';
                 } else if (status === 'disconnected') {
@@ -167,6 +166,12 @@ const app = {
                     container.innerHTML = '<div class="text-center text-muted"><i class="bi bi-hourglass-split display-4"></i><p>Aguardando...</p></div>';
                 }
             }
+        },
+        renderQr(qrCode) {
+            const container = document.getElementById('qrCodeContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            new QRCode(container, { text: qrCode, width: 220, height: 220 });
         }
     },
     router: {
@@ -227,14 +232,10 @@ const app = {
                 app.ui.renderDashboard(sessionDetails);
             } catch (e) {
                 console.error('Erro ao carregar sessões', e);
-                // alert('Não foi possível carregar as sessões.');
             }
         },
         async create() {
-            // Se chamado sem argumentos (reconectar), usa o ID atual
             let sessionId = app.config.currentSessionId;
-            
-            // Se chamado pelo modal (nova sessão), pega do input
             if (!sessionId || document.getElementById('newSessionId').value) {
                 sessionId = document.getElementById('newSessionId').value;
             }
@@ -271,7 +272,6 @@ const app = {
                     headers: { 'Content-Type': 'application/json', 'x-api-key': app.config.apiKey },
                     body: JSON.stringify({ sessionId: app.config.currentSessionId })
                 });
-                // Atualiza a tela atual
                 app.sessions.select(app.config.currentSessionId);
             } catch (e) {
                 alert('Erro ao desconectar sessão');
@@ -310,20 +310,22 @@ const app = {
     },
     initSocket() {
         app.config.socket = io();
+        
+        // CORREÇÃO: Adicionado listener para o evento 'connection.qr'
         app.config.socket.on('connection.qr', (data) => {
             if (data.sessionId === app.config.currentSessionId) {
-                app.ui.updateStatus('qr_received', data.qr);
+                app.ui.renderQr(data.qr);
+                app.ui.updateStatus('qr_received');
             }
         });
+
         app.config.socket.on('status.update', (data) => {
-            // Update dashboard list if on dashboard
-            if (document.getElementById('total-sessions')) { // Check if dashboard is loaded
+            if (document.getElementById('total-sessions')) {
                 const badge = document.querySelector(`#sessionsList a[href="#session/${data.sessionId}"] .badge`);
                 if (badge) badge.textContent = app.ui.formatStatus(data.status);
                 const indicator = document.querySelector(`#sessionsList a[href="#session/${data.sessionId}"] .status-indicator`);
                 if(indicator) indicator.className = `status-indicator status-${data.status} me-2`;
             }
-            // Update details page if currently viewed
             if (data.sessionId === app.config.currentSessionId) {
                 app.ui.updateStatus(data.status);
                 if (data.status === 'open') {
