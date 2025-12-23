@@ -13,7 +13,6 @@ import messagesRouter from './api/messages.js';
 import mediaRouter from './api/media.js';
 import groupsRouter from './api/groups.js';
 import othersRouter from './api/others.js';
-import storeRouter from './api/store.js';
 import { checkApiKey } from './api/utils.js';
 import { initSocket } from './api/socket.js';
 
@@ -79,7 +78,6 @@ apiRoutes.use('/', messagesRouter);
 apiRoutes.use('/', mediaRouter);
 apiRoutes.use('/', groupsRouter);
 apiRoutes.use('/', othersRouter);
-apiRoutes.use('/', storeRouter);
 app.use('/', apiRoutes);
 
 async function startServer() {
