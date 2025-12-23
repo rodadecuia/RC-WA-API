@@ -236,23 +236,47 @@ const app = {
         },
         async create() {
             let sessionId = app.config.currentSessionId;
-            if (!sessionId || document.getElementById('newSessionId').value) {
-                sessionId = document.getElementById('newSessionId').value;
+            const input = document.getElementById('newSessionId');
+            
+            if (input && input.value) {
+                sessionId = input.value;
             }
             
-            if (!sessionId) return;
+            if (!sessionId) {
+                alert('Por favor, digite um nome para a sessão.');
+                return;
+            }
             
+            const btn = document.querySelector('#newSessionModal .btn-primary');
+            const originalText = btn ? btn.innerText : 'Criar';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = 'Criando...';
+            }
+
             try {
-                await fetch('/sessions/start', {
+                const res = await fetch('/sessions/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-api-key': app.config.apiKey },
                     body: JSON.stringify({ sessionId })
                 });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'Erro desconhecido ao criar sessão');
+                }
+
                 app.ui.modals.newSession.hide();
-                document.getElementById('newSessionId').value = '';
+                if (input) input.value = '';
                 app.router.navigate('session-details', { sessionId });
             } catch (e) {
-                alert('Erro ao criar/iniciar sessão');
+                alert(`Erro: ${e.message}`);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                }
             }
         },
         async select(sessionId) {
