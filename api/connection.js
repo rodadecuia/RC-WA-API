@@ -26,12 +26,21 @@ export const incrementStats = (sessionId, type) => {
     }
 };
 
-export async function startSession(sessionId) {
+export async function startSession(sessionId, options = {}) {
     return new Promise((resolve, reject) => {
         try {
-            if (sessions.has(sessionId) && sessions.get(sessionId).sock?.user) {
+            // Se já existe e não estamos forçando reconexão (ex: para sync), retorna a existente
+            if (sessions.has(sessionId) && sessions.get(sessionId).sock?.user && !options.forceReconnect) {
                 console.log(`Sessão ${sessionId} já está ativa.`);
                 return resolve(sessions.get(sessionId));
+            }
+
+            // Se forçar reconexão, desconecta a anterior primeiro
+            if (sessions.has(sessionId) && options.forceReconnect) {
+                const oldSession = sessions.get(sessionId);
+                if (oldSession.sock) oldSession.sock.end(undefined);
+                if (oldSession.interval) clearInterval(oldSession.interval);
+                sessions.delete(sessionId);
             }
 
             const sessionToken = uuidv4();
@@ -63,9 +72,9 @@ export async function startSession(sessionId) {
                         auth: state,
                         printQRInTerminal: false,
                         logger: pino({ level: 'silent' }),
-                        browser: ["RC Omni SaaS", "Chrome", "1.0.0"], // Atualizado conforme recomendação
-                        syncFullHistory: false, // Evita sobrecarga no primeiro login (v7)
-                        markOnlineOnConnect: true, // Recomendado para v7
+                        browser: ["RC Omni SaaS", "Chrome", "1.0.0"],
+                        syncFullHistory: options.syncFullHistory || false, // Controlado por opção
+                        markOnlineOnConnect: true,
                         getMessage: async (key) => (store.loadMessage(key.remoteJid, key.id))?.message || undefined,
                     });
 
@@ -83,10 +92,13 @@ export async function startSession(sessionId) {
 
                     sock.ev.on('creds.update', saveCreds);
 
-                    // Tratamento de histórico para evitar flood (v7)
+                    // Tratamento de histórico
                     sock.ev.on('messaging-history.set', ({ chats, contacts, messages, isLatest }) => {
                         console.log(`Sessão ${sessionId}: Histórico recebido. Chats: ${chats.length}, Contatos: ${contacts.length}, Mensagens: ${messages.length}`);
-                        // Não enviamos webhook aqui para evitar derrubar o backend
+                        // Se syncFullHistory for true, talvez queira notificar que terminou
+                        if (options.syncFullHistory) {
+                            console.log(`Sessão ${sessionId}: Sincronização completa de histórico finalizada.`);
+                        }
                     });
 
                     sock.ev.on('contacts.upsert', async () => {
@@ -125,7 +137,8 @@ export async function startSession(sessionId) {
 
                             if (shouldReconnect) {
                                 if (sessions.has(sessionId)) {
-                                    startSession(sessionId);
+                                    // Reconecta com as mesmas opções originais se possível, ou padrão
+                                    startSession(sessionId, options); 
                                 }
                             } else {
                                 deleteSession(sessionId);
@@ -153,7 +166,6 @@ export async function startSession(sessionId) {
                     });
 
                     sock.ev.on('messages.upsert', async m => {
-                        // Filtra apenas mensagens novas (notify) para evitar processar histórico como novo
                         if (m.type === 'notify') {
                             for (const msg of m.messages) {
                                 if (!msg.key.fromMe) {
@@ -267,6 +279,24 @@ router.post('/sessions/delete', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: `Falha ao excluir sessão: ${error.message}` });
+    }
+});
+
+router.post('/sessions/sync-history', async (req, res) => {
+    const { sessionId } = req.body;
+    if (!sessionId) return res.status(400).json({ error: 'sessionId é obrigatório' });
+    
+    try {
+        // Reinicia a sessão forçando a reconexão e ativando o syncFullHistory
+        await startSession(sessionId, { forceReconnect: true, syncFullHistory: true });
+        
+        res.json({ 
+            status: 'success', 
+            message: `Sincronização de histórico iniciada para a sessão ${sessionId}. Isso pode levar alguns minutos.` 
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: `Falha ao iniciar sincronização: ${error.message}` });
     }
 });
 
