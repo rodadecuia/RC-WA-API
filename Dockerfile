@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:20-slim
 
 # Cria o diretório de trabalho
 WORKDIR /usr/src/app
@@ -6,13 +6,13 @@ WORKDIR /usr/src/app
 # Instala dependências do sistema
 # ffmpeg: necessário para manipulação de áudio/vídeo e stickers
 # git, python3, make, g++: necessários para compilar dependências nativas (node-gyp)
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     git \
     python3 \
     make \
     g++ \
     ffmpeg \
-    vips-dev
+    && rm -rf /var/lib/apt/lists/*
 
 # Copia os arquivos de dependências
 COPY package*.json ./
